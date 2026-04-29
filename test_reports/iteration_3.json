@@ -1,0 +1,58 @@
+{
+  "summary": "FULL RETEST #3 PASS end-to-end. Main agent's fixes resolved the iteration-2 gap: (1) SidebarNavigation.handleCreateProject now calls onDataChanged?.() before onSelectProject, (2) ChatHub.handleSelectProject awaits loadData() when the id is not yet in its local projects state. After creating 'TestProj1' via the sidebar modal, the main area immediately swapped to the group chat view with chat-input rendered (no extra click needed). Sending 'HELLO_IN_GROUP' persisted to the project scope only; Red's 1-on-1 remained a clean empty state with no bubble leakage and no cc_msgs_agent_red key in localStorage. Iteration-2 smoke items (OpenRouter/Ollama rejection) were not re-exercised this round since the relevant code was not touched and they were green in iteration 2.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "retest_results": {
+    "retest_3_group_project_creation_and_memory_separation": {
+      "status": "PASS",
+      "steps": {
+        "a_clear_localstorage": "PASS",
+        "b_settings_sanity": "PASS — settings opened and chat tab accessible",
+        "c_click_new_group_project_button": "PASS — testID new-group-project-button",
+        "d_fill_new_project_name_input": "PASS — typed 'TestProj1'",
+        "e_click_create_project_confirm": "PASS — main area immediately rendered GROUP chat view 'TestProj1' with testID chat-input present (no second click required)",
+        "f_send_HELLO_IN_GROUP_in_group": "PASS — message bubble visible in group; Blue and Green responded with inline '⚠ No OpenRouter API key configured…' bubbles (expected since no key, proves save+routing path ran)",
+        "g_switch_to_Red_1on1": "PASS — Red chat opened showing 'Start chatting with Red' empty state; NO HELLO_IN_GROUP bubble anywhere in main area",
+        "h_localstorage_inspection": "PASS — cc_msgs_project_<id> contains HELLO_IN_GROUP (len=638); cc_msgs_agent_red does NOT exist in localStorage (absent, not just empty)"
+      },
+      "evidence_localstorage_keys": ["cc_projects", "cc_migration_v2_done", "cc_msgs_project_2a7107ed-364b-4438-98d2-d799aee1b3a9", "cc_active_project"],
+      "evidence_screens": [".screenshots/r3b_after_create.png", ".screenshots/r3b_group_sent.png", ".screenshots/r3b_red_1on1.png"]
+    },
+    "smoke_openrouter_invalid_key_rejection": {
+      "status": "NOT_RERUN",
+      "reason": "Code path unchanged since iteration 2 PASS; skipped per request to keep this iteration focused on retest #3."
+    },
+    "smoke_ollama_invalid_endpoint_rejection": {
+      "status": "NOT_RERUN",
+      "reason": "Code path unchanged since iteration 2 PASS; skipped per request."
+    }
+  },
+  "verified_working_this_iteration": [
+    "Sidebar '+ New Group Project' → name modal → Create → group chat main view renders automatically (chat-input + chat-send-button testIDs available).",
+    "Sending a message in the newly-created group persists to cc_msgs_project_<id> and is visible as a user bubble.",
+    "Agent responses fail gracefully with inline ⚠ error bubbles when no OpenRouter key is configured (desired UX).",
+    "Switching to Red 1-on-1 shows a clean empty state and does NOT carry HELLO_IN_GROUP forward as a user bubble — the user-typed group message stays in the group scope only.",
+    "localStorage partitioning: cc_msgs_project_<id> holds the group message; cc_msgs_agent_red is absent (never written)."
+  ],
+  "test_report_links": [
+    ".screenshots/r3b_after_create.png",
+    ".screenshots/r3b_group_sent.png",
+    ".screenshots/r3b_red_1on1.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "SidebarNavigation.handleCreateProject (line 81): correctly calls onDataChanged?.() before onSelectProject so ChatHub refreshes its projects state synchronously via loadData before switching.",
+    "ChatHub.handleSelectProject (lines 71-73): defensive reload loadData() when id is not yet in state; this is the safety net that catches the race even if sidebar's onDataChanged callback were ever removed. Good belt-and-suspenders.",
+    "ChatMainArea scope derivation (lines 40-43): clean single-source-of-truth. `scope = { type:'project', id: project.id }` when mode==='project' — saves and reads both use the same key, which is what guarantees the isolation we verified.",
+    "Asymmetric memory is only read-side (buildContextForAgent merges group history into 1-on-1 context for LLM), it does NOT mutate the 1-on-1 message store. Confirmed in this run: cc_msgs_agent_red was never created even after group had messages visible to Red's project membership.",
+    "Minor (non-blocking): Alert.alert on react-native-web surfaces as browser window.alert, which is harder for automated tests to intercept. Consider inline error text in modals (already noted in iteration 2)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100% of retest #3 steps (a-h) pass; iteration-2 smoke items intentionally not re-run"},
+  "test_credentials": "N/A — BYOK localStorage app, no real keys used.",
+  "seed_data_creation": "Created one ephemeral project 'TestProj1' with one user message 'HELLO_IN_GROUP' in localStorage on the preview URL. No persisted backend state.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Retest #3 is fully closed. The only remaining low-priority suggestion from iteration 2 (convert Alert.alert to inline <Text> error inside API-key modals for better automation visibility) is still open but does not affect functionality. All three high-priority regressions from earlier iterations (OpenRouter invalid-key validation, Ollama invalid-endpoint validation, group-create→send→isolation) are now verified. Safe to ship.",
+  "rca_of_the_issue": "Fix applied by main agent in iteration 2→3 worked as designed. RCA of the earlier bug: SidebarNavigation persisted the new project to storage and called onSelectProject(id), but ChatHub had not yet reloaded its `projects` state, so `projects.find(p => p.id === activeProjectId)` returned undefined and the empty-state landing rendered instead of <ChatMainArea mode='project'>. The dual fix — onDataChanged before onSelectProject on the sidebar side AND await loadData() inside handleSelectProject on the parent side — closes the race in both directions."
+}

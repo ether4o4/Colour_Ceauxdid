@@ -60,12 +60,17 @@ export default function ChatHub() {
   useEffect(() => { loadData(); }, [loadData]);
 
   async function handleSelectProject(projectId: string) {
-    setActiveProjectIdState(projectId);
-    await setActiveProjectId(projectId);
     setActiveSection('project');
     setActiveAgentId(undefined);
     setActiveSavedChatId(undefined);
+    setActiveProjectIdState(projectId);
+    await setActiveProjectId(projectId);
     setMobilePanelVisible(false);
+    // If this is a project we haven't loaded yet (e.g. just created from sidebar),
+    // refresh the local projects list so the main area can render the chat view.
+    if (!projects.find(p => p.id === projectId)) {
+      await loadData();
+    }
   }
 
   function handleSelectAgent(agentId: string) {
@@ -211,6 +216,7 @@ export default function ChatHub() {
               onSelectSavedChat={handleSelectSavedChat}
               onNewProject={handleNewProject}
               onCreateAgent={() => setShowCreateAgentModal(true)}
+              onDataChanged={loadData}
             />
           </View>
         )}

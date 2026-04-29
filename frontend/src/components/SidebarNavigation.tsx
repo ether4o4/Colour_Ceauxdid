@@ -22,6 +22,7 @@ interface SidebarNavigationProps {
   onSelectSavedChat: (chatId: string) => void;
   onNewProject: () => void;
   onCreateAgent: () => void;
+  onDataChanged?: () => void;
 }
 
 export default function SidebarNavigation({
@@ -34,6 +35,7 @@ export default function SidebarNavigation({
   onSelectSavedChat,
   onNewProject,
   onCreateAgent,
+  onDataChanged,
 }: SidebarNavigationProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
@@ -74,6 +76,9 @@ export default function SidebarNavigation({
     setProjects([...projects, newProject]);
     setProjectName('');
     setShowProjectModal(false);
+    // Notify parent so its `projects` state refreshes BEFORE onSelectProject
+    // otherwise ChatHub won't find the new project and will stay in empty state.
+    onDataChanged?.();
     onSelectProject(newProject.id);
   }
 
