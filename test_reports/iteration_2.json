@@ -1,0 +1,67 @@
+{
+  "summary": "Retest-only iteration after main-agent fix to testOpenRouterKey (now hits GET /auth/key instead of public /models). Verified 3 of 4 retest items PASS and 1 PARTIAL. Critical OpenRouter-key-validation bug from iteration 1 is FIXED. Ollama invalid-endpoint validation also works as expected. Group-project creation testIDs are wired and the project is created + appears in the sidebar, but clicking the newly-created project does NOT render a group-chat main view (no chat-input testID present after selecting the project), so the in-app send of HELLO_IN_GROUP into the group could not be exercised end-to-end. Red's 1-on-1 remains clean (empty state, no leakage), which is the correct behavior; the underlying asymmetric-memory logic was already code-reviewed as correct in iteration 1.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "ChatHub / ChatMainArea — group-project selection routing",
+        "issue": "After creating a group project via the sidebar's 'New Group Project' modal, clicking 'TestProj1' in the sidebar's CURRENT PROJECTS list does not render the project's chat view in the main area. The chat-input testID is not found (count=0) and the main area continues to show the empty 'Colour Ceauxdid / Create Your First Project' landing state. This blocks the end-to-end group→1-on-1 memory-separation test because HELLO_IN_GROUP cannot actually be sent inside the group. Logic in buildContextForAgent looks correct per iteration 1 code review; the gap is purely the UI routing from sidebar.onSelectProject → main area rendering a project chat with input.",
+        "selector": "[data-testid='chat-input'] (not found after onSelectProject)",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "retest_results": {
+    "retest_1_openrouter_invalid_key": {
+      "status": "PASS",
+      "evidence": "Console captured 401 from https://openrouter.ai/api/v1/auth/key; modal stayed open; cc_api_keys in localStorage remained null; OPENROUTER KEYS counter stays at (0). Screenshot .screenshots/r_01.png shows modal still visible with the invalid key still typed."
+    },
+    "retest_2_ollama_invalid_endpoint": {
+      "status": "PASS",
+      "evidence": "Modal stayed open after clicking Test & Save with 'http://127.0.0.1:99999'; cc_api_keys still null; OLLAMA ENDPOINTS stays at (0). Screenshot .screenshots/r_02.png shows the Ollama modal still visible with the bogus URL."
+    },
+    "retest_3_group_project_creation_and_memory_separation": {
+      "status": "PARTIAL",
+      "creation": "PASS — testIDs new-group-project-button, new-project-name-input, create-project-confirm all work. TestProj1 appears in the sidebar's CURRENT PROJECTS list after create.",
+      "send_message_in_group": "FAIL — clicking 'TestProj1' in sidebar does not open a chat view; chat-input is not rendered, so HELLO_IN_GROUP cannot be entered in the group.",
+      "leak_check_red_1_on_1": "PASS (vacuous) — HELLO_IN_GROUP not visible in Red's screen (count=0) and cc_msgs_agent_red is null. Because no group message was actually sent, this does not fully exercise the asymmetric-memory path but confirms no accidental leakage into the 1-on-1 scope."
+    },
+    "retest_4_no_leftover_key_from_retest_1": {
+      "status": "PASS",
+      "evidence": "Final cc_api_keys in localStorage = null; settings shows OPENROUTER KEYS (0) and OLLAMA ENDPOINTS (0)."
+    }
+  },
+  "verified_working_this_iteration": [
+    "testOpenRouterKey now hits /auth/key and correctly rejects invalid keys (401).",
+    "testOllamaEndpoint returns unreachable and blocks save for bad base URLs.",
+    "SidebarNavigation create-project modal and its testIDs (new-group-project-button, new-project-name-input, create-project-confirm) all function.",
+    "Project metadata is persisted to storage and rendered in the sidebar's CURRENT PROJECTS list."
+  ],
+  "test_report_links": [
+    ".screenshots/r_01.png",
+    ".screenshots/r_02.png",
+    ".screenshots/f_01_proj_open.png",
+    ".screenshots/f_03_red.png"
+  ],
+  "action_items": [
+    "HIGH: Wire up sidebar project click → main area group chat rendering. After onSelectProject(id), ChatHub / ChatMainArea should mount a group-chat scope view that exposes testID 'chat-input' and 'chat-send-button' (same testIDs used in 1-on-1). Without this, group messages cannot be authored at all, which also blocks the asymmetric-memory feature from being observable end-to-end.",
+    "LOW (UX): The Alert.alert failure toasts on react-native-web render as browser window.alert dialogs. They worked functionally (modal stayed open, no key saved) but were not captured by the test's dialog handler in all cases — consider converting the failure feedback to an inline <Text> error in the modal for better UX and easier automated verification."
+  ],
+  "critical_code_review_comments": [
+    "FIXED: testOpenRouterKey in /app/frontend/src/utils/api.ts now uses /auth/key — good.",
+    "GAP: the sidebar's handleCreateProject calls onSelectProject(newProject.id) but the consuming screen (ChatHub) does not appear to render a chat surface for the selected project (no chat-input after select). Either the scope wiring (project id → ChatScope) or the conditional rendering of the group chat view is missing/buggy."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A",
+    "frontend": "~90% (retest 1,2,4 all PASS; retest 3 partial — creation works, in-group send blocked by missing project-view routing)"
+  },
+  "test_credentials": "N/A — BYOK localStorage app; invalid test values only.",
+  "seed_data_creation": "localStorage was cleared before each test. One group project 'TestProj1' was created but has no messages (since chat-input wasn't rendered). No API keys persisted.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After main agent fixes the project-selection → group-chat view rendering, re-run RETEST #3 fully: (a) create TestProj1 via sidebar, (b) click it, (c) verify chat-input appears, (d) send 'HELLO_IN_GROUP', (e) switch to Red's 1-on-1 and verify HELLO_IN_GROUP does NOT appear as a visible message bubble, (f) inspect cc_msgs_agent_red and the project's cc_msgs_* scope key to confirm the message lives ONLY in the project scope. The other 3 retests are now green and should not need re-running unless related code is touched.",
+  "rca_of_the_issue": "ROOT CAUSE for retest 3 partial: SidebarNavigation.handleCreateProject persists the new project and invokes onSelectProject(newProject.id), but the parent screen that owns the main chat area does not swap to a group-chat view upon that selection — the main area continues to show the empty 'Create Your First Project' landing state. REPRO: 1) Fresh app (localStorage cleared). 2) Click '+ New Group Project'. 3) Enter 'TestProj1' and click Create. 4) Observe that TestProj1 appears in sidebar but main area stays on landing. 5) Click 'TestProj1' in sidebar — still no chat input. EXPECTED: main area renders a group chat with chat-input and chat-send-button testIDs. MITIGATION: ensure the consuming screen (likely ChatHub.tsx) sets activeSection='project' and activeProjectId on select, then renders <ChatMainArea scope={{ type:'project', id: activeProjectId }} /> which already has the chat-input/send testIDs."
+}

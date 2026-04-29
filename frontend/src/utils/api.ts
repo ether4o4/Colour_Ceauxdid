@@ -273,17 +273,20 @@ export async function getSingleAgentResponse(
 }
 
 // ────────── Key validation (used by settings UI) ──────────
-export async function testOpenRouterKey(key: string): Promise<{ ok: boolean; error?: string; modelCount?: number }> {
+export async function testOpenRouterKey(key: string): Promise<{ ok: boolean; error?: string; label?: string; limit?: number | null }> {
+  // NOTE: /models is a PUBLIC endpoint and returns 200 even with a bogus key.
+  // /auth/key REQUIRES a valid Bearer token — invalid keys return 401.
   try {
-    const r = await fetch(`${OPENROUTER_BASE}/models`, {
+    const r = await fetch(`${OPENROUTER_BASE}/auth/key`, {
       headers: { Authorization: `Bearer ${key}` },
     });
     if (!r.ok) {
       const txt = await r.text().catch(() => '');
-      return { ok: false, error: `${r.status}: ${txt.slice(0, 120)}` };
+      return { ok: false, error: `${r.status}: ${txt.slice(0, 160) || 'invalid key'}` };
     }
-    const data = await r.json();
-    return { ok: true, modelCount: (data.data || []).length };
+    const data = await r.json().catch(() => ({} as any));
+    const info = (data && (data.data || data)) || {};
+    return { ok: true, label: info.label, limit: info.limit ?? null };
   } catch (e: any) {
     return { ok: false, error: e?.message || 'Network error' };
   }

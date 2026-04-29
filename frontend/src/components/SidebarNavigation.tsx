@@ -94,7 +94,7 @@ export default function SidebarNavigation({
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Quick Actions */}
         <View style={styles.section}>
-          <TouchableOpacity style={styles.actionButton} onPress={() => setShowProjectModal(true)}>
+          <TouchableOpacity style={styles.actionButton} onPress={() => setShowProjectModal(true)} testID="new-group-project-button">
             <Text style={styles.actionButtonText}>+ New Group Project</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton} onPress={onCreateAgent}>
@@ -225,6 +225,7 @@ export default function SidebarNavigation({
               placeholderTextColor={COLORS.muted}
               value={projectName}
               onChangeText={setProjectName}
+              testID="new-project-name-input"
             />
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -236,6 +237,7 @@ export default function SidebarNavigation({
               <TouchableOpacity
                 style={[styles.modalButton, styles.primaryButton]}
                 onPress={handleCreateProject}
+                testID="create-project-confirm"
               >
                 <Text style={styles.primaryButtonText}>Create</Text>
               </TouchableOpacity>

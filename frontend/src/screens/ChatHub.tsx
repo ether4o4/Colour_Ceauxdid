@@ -314,7 +314,7 @@ export default function ChatHub() {
               <TouchableOpacity style={styles.modalButton} onPress={() => setShowNewProjectModal(false)}>
                 <Text style={styles.modalButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalButton, styles.primaryButton]} onPress={handleCreateProject}>
+              <TouchableOpacity style={[styles.modalButton, styles.primaryButton]} onPress={handleCreateProject} testID="create-project-confirm">
                 <Text style={styles.primaryButtonText}>Create</Text>
               </TouchableOpacity>
             </View>

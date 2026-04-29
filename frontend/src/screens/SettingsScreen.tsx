@@ -141,7 +141,7 @@ export default function SettingsScreen() {
       await loadAll();
       setShowAddKeyModal(false);
       const okMsg = newKeyProvider === 'openrouter'
-        ? `Key saved. ${res.modelCount ?? 0} models reachable.`
+        ? `Key verified${res.label ? ` (${res.label})` : ''}${res.limit != null ? ` — limit $${res.limit}` : ''}. Saved.`
         : `Endpoint saved. ${(res.models || []).length} local models detected: ${(res.models || []).slice(0, 4).join(', ') || '(none yet)'}`;
       Alert.alert('Connected', okMsg);
     } finally {
