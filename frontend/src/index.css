@@ -1,115 +1,207 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import "tailwindcss";
+@import "tw-animate-css";
 
-body {
-    margin: 0;
-    font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-        "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-        sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+@custom-variant dark (&:is(.dark *));
+
+/*
+==========================================================================
+【AI HANDOVER NOTE】
+1. DESIGN PHILOSOPHY:
+   - Terminal-First Physicality: Inspired by VS Code and Docker Desktop, this design system embraces the developer tool aesthetic with dark surfaces, monospace typography, and status-driven UI patterns. The core philosophy is 'Command Center Clarity' - every element should feel like a control panel in a mission-critical system.
+   - Visual Style: Neo-terminal with subtle rim-lighting on active cards, status indicators using semantic colors (green=running, yellow=warning, red=error), and glassmorphic overlays for modals. Cards have soft borders with glow effects on hover/active states to create depth without heavy shadows.
+   - Why This Style: Mobile-first agent management requires instant visual feedback. The dark theme reduces eye strain during extended sessions, while high-contrast accent colors (electric blue #2188ff) ensure CTAs pop. Monospace fonts create consistency between code/logs and UI, reinforcing the 'developer hub' identity.
+
+2. TYPOGRAPHY:
+   - Sans (Inter): Chosen for exceptional legibility at small mobile sizes, neutral geometric forms that don't compete with technical content, and wide weight range (400-700) for clear hierarchy. Inter's tight spacing works perfectly for dense information displays like agent cards and config lists.
+   - Mono (JetBrains Mono): Primary font for all code blocks, terminal output, JSON/YAML configs, and numeric data (uptime, task counts). Its increased height and distinctive ligatures improve readability in streaming log views. Also used for agent IDs and Git commit hashes to maintain technical authenticity.
+
+3. COLOR SYSTEM:
+   - Brand Primary (Electric Blue H=220): Derived from GitHub's #2188ff, this blue (oklch format) serves as the primary action color for buttons, links, and active states. It maps directly to --primary and --ring for focus indicators.
+   - Semantic Colors: --success (H=145 green) for running agents and successful operations, --warning (H=45 yellow-orange) for idle/pending states, --destructive (H=10 red) for errors and stop actions. These mirror Docker Desktop's status dot system.
+   - Background Strategy: Near-black --background (L=0.12) matches GitHub Dark (#0d1117), with --card (L=0.16) providing subtle elevation. --sidebar uses even darker (L=0.09) to anchor the navigation. All surfaces use minimal chroma (C=0.01-0.02) to avoid color pollution in dark mode.
+   - Accent System: --accent uses a slightly desaturated blue (C=0.12) for secondary actions and hover states, distinct from --primary but harmonious. --muted provides neutral gray tones for disabled states and metadata text.
+
+4. USAGE GUIDE:
+   - Layout: Mobile-first with bottom tab navigation (5 tabs: Agents/GitHub/Skills/Configs/Settings). Use full-width cards with 16px horizontal padding. Agent cards should display as vertical stacks with status dot (8px circle) in top-right, model badge, and action buttons at bottom.
+   - Special Effects: Apply backdrop-blur-md to modal overlays and bottom sheets. Use subtle box-shadow with --ring color (0 0 0 3px) for focus states. Active agent cards get a 1px glow using --primary at 40% opacity.
+   - Terminal Component: Use --background with --mono font, line-height 1.6, and --muted-foreground for timestamps. Streaming logs should have a subtle fade-in animation (200ms) per line.
+   - Status Bar: Fixed bottom bar (44px height) with --sidebar background, displaying current agent count, connection status, and sync indicator. Use --success/--warning/--destructive for status icons.
+   - Card Patterns: All cards use --card background with 1px --border, 12px border-radius (--radius * 1.5), and 16px padding. Hover state adds --accent/10 background tint. Active/selected cards get --primary left border (3px).
+   - GitHub Integration: Use --chart-1 through --chart-5 for branch visualization, commit graphs, and repo activity charts. Maintain consistent color coding across all data viz components.
+==========================================================================
+*/
+
+:root {
+  /* Typography */
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: JetBrains Mono, 'Fira Code', Consolas, 'Courier New', monospace;
+  
+  /* Radius */
+  --radius: 0.5rem;
+
+  /* Core UI Tokens */
+  --background: oklch(0.98 0.005 220);
+  --foreground: oklch(0.15 0.01 220);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.15 0.01 220);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0.01 220);
+  --primary: oklch(0.55 0.18 220);
+  --primary-foreground: oklch(0.98 0.005 220);
+  --secondary: oklch(0.92 0.01 220);
+  --secondary-foreground: oklch(0.2 0.01 220);
+  --muted: oklch(0.95 0.005 220);
+  --muted-foreground: oklch(0.48 0.01 220);
+  --accent: oklch(0.9 0.02 220);
+  --accent-foreground: oklch(0.2 0.01 220);
+  --destructive: oklch(0.55 0.22 10);
+  --destructive-foreground: oklch(0.98 0.005 10);
+  --border: oklch(0.88 0.01 220);
+  --input: oklch(0.88 0.01 220);
+  --ring: oklch(0.55 0.18 220);
+  
+  /* Chart Tokens */
+  --chart-1: oklch(0.6 0.18 220);
+  --chart-2: oklch(0.55 0.2 145);
+  --chart-3: oklch(0.6 0.2 45);
+  --chart-4: oklch(0.58 0.18 280);
+  --chart-5: oklch(0.6 0.2 10);
+  
+  /* Sidebar Tokens */
+  --sidebar: oklch(0.96 0.005 220);
+  --sidebar-foreground: oklch(0.25 0.01 220);
+  --sidebar-primary: oklch(0.55 0.18 220);
+  --sidebar-primary-foreground: oklch(0.98 0.005 220);
+  --sidebar-accent: oklch(0.9 0.02 220);
+  --sidebar-accent-foreground: oklch(0.2 0.01 220);
+  --sidebar-border: oklch(0.88 0.01 220);
+  --sidebar-ring: oklch(0.55 0.18 220);
 }
 
-code {
-    font-family:
-        source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+.dark {
+  --background: oklch(0.12 0.015 220);
+  --foreground: oklch(0.92 0.01 220);
+  --card: oklch(0.16 0.02 220);
+  --card-foreground: oklch(0.92 0.01 220);
+  --popover: oklch(0.14 0.02 220);
+  --popover-foreground: oklch(0.92 0.01 220);
+  --primary: oklch(0.62 0.2 220);
+  --primary-foreground: oklch(0.12 0.015 220);
+  --secondary: oklch(0.22 0.02 220);
+  --secondary-foreground: oklch(0.92 0.01 220);
+  --muted: oklch(0.2 0.02 220);
+  --muted-foreground: oklch(0.58 0.015 220);
+  --accent: oklch(0.28 0.04 220);
+  --accent-foreground: oklch(0.92 0.01 220);
+  --destructive: oklch(0.58 0.24 10);
+  --destructive-foreground: oklch(0.95 0.01 10);
+  --border: oklch(0.25 0.02 220);
+  --input: oklch(0.25 0.02 220);
+  --ring: oklch(0.62 0.2 220);
+  
+  /* Chart Tokens */
+  --chart-1: oklch(0.65 0.2 220);
+  --chart-2: oklch(0.6 0.22 145);
+  --chart-3: oklch(0.68 0.22 45);
+  --chart-4: oklch(0.62 0.2 280);
+  --chart-5: oklch(0.62 0.22 10);
+  
+  /* Sidebar Tokens */
+  --sidebar: oklch(0.09 0.015 220);
+  --sidebar-foreground: oklch(0.85 0.01 220);
+  --sidebar-primary: oklch(0.62 0.2 220);
+  --sidebar-primary-foreground: oklch(0.12 0.015 220);
+  --sidebar-accent: oklch(0.28 0.04 220);
+  --sidebar-accent-foreground: oklch(0.92 0.01 220);
+  --sidebar-border: oklch(0.18 0.02 220);
+  --sidebar-ring: oklch(0.62 0.2 220);
+}
+
+@theme inline {
+  /* Shadcn Core Mapping */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Charts Mapping */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* Sidebar Mapping */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Typography */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* Radius */
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
 @layer base {
-    :root {
-        --background: 0 0% 100%;
-        --foreground: 0 0% 3.9%;
-        --card: 0 0% 100%;
-        --card-foreground: 0 0% 3.9%;
-        --popover: 0 0% 100%;
-        --popover-foreground: 0 0% 3.9%;
-        --primary: 0 0% 9%;
-        --primary-foreground: 0 0% 98%;
-        --secondary: 0 0% 96.1%;
-        --secondary-foreground: 0 0% 9%;
-        --muted: 0 0% 96.1%;
-        --muted-foreground: 0 0% 45.1%;
-        --accent: 0 0% 96.1%;
-        --accent-foreground: 0 0% 9%;
-        --destructive: 0 84.2% 60.2%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 89.8%;
-        --input: 0 0% 89.8%;
-        --ring: 0 0% 3.9%;
-        --chart-1: 12 76% 61%;
-        --chart-2: 173 58% 39%;
-        --chart-3: 197 37% 24%;
-        --chart-4: 43 74% 66%;
-        --chart-5: 27 87% 67%;
-        --radius: 0.5rem;
-    }
-    .dark {
-        --background: 0 0% 3.9%;
-        --foreground: 0 0% 98%;
-        --card: 0 0% 3.9%;
-        --card-foreground: 0 0% 98%;
-        --popover: 0 0% 3.9%;
-        --popover-foreground: 0 0% 98%;
-        --primary: 0 0% 98%;
-        --primary-foreground: 0 0% 9%;
-        --secondary: 0 0% 14.9%;
-        --secondary-foreground: 0 0% 98%;
-        --muted: 0 0% 14.9%;
-        --muted-foreground: 0 0% 63.9%;
-        --accent: 0 0% 14.9%;
-        --accent-foreground: 0 0% 98%;
-        --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 14.9%;
-        --input: 0 0% 14.9%;
-        --ring: 0 0% 83.1%;
-        --chart-1: 220 70% 50%;
-        --chart-2: 160 60% 45%;
-        --chart-3: 30 80% 55%;
-        --chart-4: 280 65% 60%;
-        --chart-5: 340 75% 55%;
-    }
-}
+  * {
+    @apply border-border outline-ring/50;
+  }
 
-@layer base {
-    * {
-        @apply border-border;
-    }
-    body {
-        @apply bg-background text-foreground;
-    }
-}
+  html {
+    @apply scroll-smooth antialiased;
+  }
 
-@layer base {
-    [data-debug-wrapper="true"] {
-        display: contents !important;
-    }
+  body {
+    @apply bg-background text-foreground font-sans min-h-screen;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
 
-    [data-debug-wrapper="true"] > * {
-        margin-left: inherit;
-        margin-right: inherit;
-        margin-top: inherit;
-        margin-bottom: inherit;
-        padding-left: inherit;
-        padding-right: inherit;
-        padding-top: inherit;
-        padding-bottom: inherit;
-        column-gap: inherit;
-        row-gap: inherit;
-        gap: inherit;
-        border-left-width: inherit;
-        border-right-width: inherit;
-        border-top-width: inherit;
-        border-bottom-width: inherit;
-        border-left-style: inherit;
-        border-right-style: inherit;
-        border-top-style: inherit;
-        border-bottom-style: inherit;
-        border-left-color: inherit;
-        border-right-color: inherit;
-        border-top-color: inherit;
-        border-bottom-color: inherit;
-    }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+
+  code, pre {
+    @apply font-mono;
+  }
+
+  ::selection {
+    @apply bg-primary/20 text-primary;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40;
+  }
 }
