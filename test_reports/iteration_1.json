@@ -1,0 +1,72 @@
+{
+  "summary": "Frontend-only testing of Colour Ceauxdid (Expo Web on port 3000). Verified the core chat-isolation fix, scope-based persistence, settings/provider/model UI, localStorage keying, and absence of hardcoded API keys. Found ONE critical bug: OpenRouter key validation accepts ANY string (including the documented invalid test key 'sk-or-v1-INVALID_TEST_KEY') because it hits the public /models endpoint which doesn't require auth — so the 'Test & Save' button stores invalid keys silently.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "SettingsScreen → Add API Key modal (testOpenRouterKey in /app/frontend/src/utils/api.ts)",
+        "issue": "OpenRouter key validation accepts ANY string. testOpenRouterKey() calls GET https://openrouter.ai/api/v1/models which is a PUBLIC endpoint (no auth required) — it returns 200 with the model list regardless of whether the Authorization header is valid, missing, or garbage. As a result, the explicit test case 'sk-or-v1-INVALID_TEST_KEY' was successfully saved and now appears under OPENROUTER KEYS (1) in Settings. The user-stated success criterion ('should fail validation and show an error … modal should stay open') is NOT met. FIX: change the validation endpoint to one that requires auth, e.g. GET https://openrouter.ai/api/v1/auth/key (returns 401 for invalid keys, 200 with usage info for valid ones), or GET /api/v1/credits.",
+        "selector": "[data-testid='save-api-key-button']",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_working": [
+    "App loads on Expo Web (port 3000) with no console errors (just one RN deprecation warning for pointerEvents).",
+    "Empty state shows 'Create Your First Project' CTA + 5 colored agent chips (Red/Blue/Green/Yellow/Purple).",
+    "Sidebar shows 'INDIVIDUAL CHATS' with all 5 agents and their role descriptions.",
+    "Bottom tabs: CHAT, TASKS, AGENTS, SETTINGS — all render.",
+    "CRITICAL CHAT-ISOLATION FIX VERIFIED: typed 'HELLO_FROM_RED' in Red 1-on-1, switched to Blue — Blue is empty (shows the 'Start chatting with Blue' empty state). Bug fixed.",
+    "PERSISTENCE PER SCOPE VERIFIED: after page reload, 'HELLO_FROM_RED' still in Red, Blue still empty.",
+    "Inline error bubble in agent message rendered correctly: '⚠ No OpenRouter API key configured. Open Settings → API Keys to add one.' inside the agent's chat bubble — proves scope-aware save path runs even when LLM call fails.",
+    "Settings 'API KEYS & PROVIDERS' section renders: provider toggle (OPENROUTER / OLLAMA (LOCAL)), DEFAULT MODEL picker, OPENROUTER KEYS list, OLLAMA ENDPOINTS list, '+ ADD API KEY / ENDPOINT' button.",
+    "Add-key modal opens with testID add-api-key-button, contains testID new-key-secret input and testID save-api-key-button.",
+    "Provider toggle works: clicking 'OLLAMA (LOCAL)' switches localStorage cc_provider_settings.defaultProvider to 'ollama' and reveals 'OLLAMA MODEL' input. Clicking back to OPENROUTER reverts and shows DEFAULT MODEL picker.",
+    "Model picker (testID open-model-picker) opens modal with 10 models, selecting 'Gemini 2.0 Flash (free)' persists google/gemini-2.0-flash-exp:free into cc_provider_settings.defaultModel.",
+    "localStorage keying verified — only ['cc_msgs_agent_red', 'cc_provider_settings', 'cc_api_keys', 'cc_migration_v2_done'] present. No global 'cc_messages' bucket. cc_migration_v2_done='1'. Scope keys follow the cc_msgs_<type>_<id> pattern as designed.",
+    "No hardcoded sk-or-v1- in /app/frontend/src/ — only the placeholder string 'sk-or-v1-...' in SettingsScreen.tsx (cosmetic, not a leak)."
+  ],
+  "not_fully_verified": [
+    "Group project creation: clicked '+ New Group Project', a single text input appeared and was filled with 'TestProj1', but the matching create/save button was not located in the modal via plain text matching (Create/CREATE/Save/SAVE/Done) — modal may use an icon or different label. Did not get to send 'HELLO_IN_GROUP' or verify group→1-on-1 message-list separation. Code review of buildContextForAgent + getGroupMessagesForAgent looks correct (group msgs only injected as system-prompt context, not into the rendered scope's message array), so logic appears sound, but end-to-end UI test for this flow incomplete. Recommend main-agent self-test or add data-testid to the new-project create button.",
+    "Ollama invalid endpoint test ('http://127.0.0.1:99999') skipped because the OpenRouter validation bug above blocked further investigation of the same modal flow. testOllamaEndpoint() in api.ts looks correct (catches network error and returns ok:false with 'Unreachable')."
+  ],
+  "test_report_links": [
+    ".screenshots/01_loaded.png",
+    ".screenshots/03_red_after_send.png",
+    ".screenshots/04_blue_chat.png",
+    ".screenshots/05_red_after_reload.png",
+    ".screenshots/06_settings.png",
+    ".screenshots/08_invalid_key_response.png",
+    ".screenshots/09_model_picker.png"
+  ],
+  "action_items": [
+    "FIX testOpenRouterKey() in /app/frontend/src/utils/api.ts: switch from GET /api/v1/models (public endpoint) to GET /api/v1/auth/key (or /api/v1/credits) which require authentication. Then 401/403 responses will correctly surface to the modal as 'Key test failed' and the modal will stay open. Reference: https://openrouter.ai/docs/api-reference/get-credits.",
+    "After fix: re-run the invalid-key test ('sk-or-v1-INVALID_TEST_KEY') — modal should stay open with an error alert; OPENROUTER KEYS list should remain (0).",
+    "OPTIONAL: add data-testid='create-project-confirm' (or similar) to the New Group Project modal's create button so end-to-end project-creation tests are reliable.",
+    "OPTIONAL: Alert.alert on react-native-web renders as window.alert (modal blocking on Chromium but auto-dismissed by some test runners). Consider replacing with an in-modal inline error <Text> for the key-test-failed message — more visible to users and easier to test."
+  ],
+  "critical_code_review_comments": [
+    "BUG: testOpenRouterKey hits /models which is unauthenticated. Use /auth/key.",
+    "MINOR: handleSaveNewKey relies on Alert.alert for both success and failure feedback. On RN Web this is window.alert and looks out of place. Inline error/success state in the modal would be cleaner and more testable.",
+    "GOOD: ChatScope design (agent vs project) and getGroupMessagesForAgent correctly enforces the asymmetric memory rule (group → 1-on-1 yes, 1-on-1 → group no).",
+    "GOOD: clearAllMessages enumerates AsyncStorage and removes any keys starting with cc_msgs_ plus the legacy key — solid cleanup.",
+    "GOOD: Migration is idempotent (cc_migration_v2_done flag) and parks legacy data under cc_msgs_project_legacy instead of dropping it.",
+    "GOOD: No hardcoded API key found in /app/frontend/src — only the placeholder string in the input field's placeholder attribute."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (no backend in this app)",
+    "frontend": "~92% (12/13 listed test items pass; 1 critical validation bug; 1 group-create UI test inconclusive due to selector)"
+  },
+  "test_credentials": "N/A — app is fully BYOK localStorage-only. The test-only invalid key 'sk-or-v1-INVALID_TEST_KEY' was used per the request and is harmless.",
+  "seed_data_creation": "Created during test (in browser localStorage only): cc_msgs_agent_red contains a single user message 'HELLO_FROM_RED' plus an agent error bubble. cc_api_keys contains one bogus 'sk-or-v1-INVALID_TEST_KEY' (this is the BUG — it should not have been saved). cc_provider_settings.defaultModel = google/gemini-2.0-flash-exp:free.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After main agent fixes testOpenRouterKey to use /auth/key, re-run: (1) save 'sk-or-v1-INVALID_TEST_KEY' → expect modal stays open + alert 'Key test failed: 401…' + OPENROUTER KEYS (0). (2) Save Ollama URL 'http://127.0.0.1:99999' → expect alert 'Unreachable' or similar + OLLAMA ENDPOINTS (0). (3) Complete the group-project flow — find the create-project modal's confirm button (may need data-testid) and verify 'HELLO_IN_GROUP' does NOT appear in any 1-on-1 chat. Chat-isolation, persistence, provider/model toggles already verified — no need to re-test those unless related code is touched.",
+  "rca_of_the_issue": "ROOT CAUSE: OpenRouter exposes GET https://openrouter.ai/api/v1/models as an UNAUTHENTICATED public endpoint that returns the full model catalog regardless of the Authorization header. The validator at /app/frontend/src/utils/api.ts lines 276-290 sends the user's key against this endpoint and treats r.ok===true as 'key is valid' — which is incorrect because the endpoint never inspects the key. REPRODUCTION: 1) Open Settings tab. 2) Click '+ ADD API KEY / ENDPOINT'. 3) Provider OpenRouter (default). 4) Type any garbage into the API KEY field, e.g. 'sk-or-v1-INVALID_TEST_KEY' or even 'foo'. 5) Click 'Test & Save'. EXPECTED: 'Key test failed' alert + modal stays open + OPENROUTER KEYS (0). ACTUAL: success alert 'Connected — Key saved. N models reachable.' + modal closes + OPENROUTER KEYS (1) shows the bogus key. MITIGATION: change line 278 from `${OPENROUTER_BASE}/models` to `${OPENROUTER_BASE}/auth/key`. The /auth/key endpoint requires a valid Bearer token; invalid keys return 401, which `if (!r.ok)` will catch and propagate as a failure. Optionally adjust the success message to use data returned by /auth/key (e.g. label, usage, limit)."
+}
