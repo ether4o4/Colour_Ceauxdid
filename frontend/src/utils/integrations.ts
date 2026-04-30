@@ -23,12 +23,15 @@ export async function testGitHubToken(token: string): Promise<{ ok: boolean; err
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
     });
     if (!r.ok) {
-      return { ok: false, error: `${r.status}: ${(await r.text()).slice(0, 140) || 'invalid token'}` };
+      const msg = r.status === 401
+        ? 'Invalid GitHub token. Generate one at github.com/settings/tokens (repo scope).'
+        : `GitHub returned ${r.status}.`;
+      return { ok: false, error: msg };
     }
     const data = await r.json();
     return { ok: true, login: data.login };
   } catch (e: any) {
-    return { ok: false, error: e?.message || 'Network error' };
+    return { ok: false, error: 'Network error contacting GitHub.' };
   }
 }
 
@@ -52,12 +55,15 @@ export async function testGoogleDriveToken(token: string): Promise<{ ok: boolean
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!r.ok) {
-      return { ok: false, error: `${r.status}: ${(await r.text()).slice(0, 140) || 'invalid or expired token'}` };
+      const msg = r.status === 401
+        ? 'Token expired or invalid. Get a fresh one at developers.google.com/oauthplayground.'
+        : `Google Drive returned ${r.status}.`;
+      return { ok: false, error: msg };
     }
     const data = await r.json();
     return { ok: true, userEmail: data?.user?.emailAddress };
   } catch (e: any) {
-    return { ok: false, error: e?.message || 'Network error' };
+    return { ok: false, error: 'Network error contacting Google Drive.' };
   }
 }
 

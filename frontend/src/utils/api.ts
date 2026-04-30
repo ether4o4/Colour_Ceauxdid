@@ -352,14 +352,20 @@ export async function testOpenRouterKey(key: string): Promise<{ ok: boolean; err
       headers: { Authorization: `Bearer ${key}` },
     });
     if (!r.ok) {
-      const txt = await r.text().catch(() => '');
-      return { ok: false, error: `${r.status}: ${txt.slice(0, 160) || 'invalid key'}` };
+      // Map common HTTP codes to friendly copy instead of leaking OpenRouter's JSON body.
+      const msg =
+        r.status === 401 ? 'Invalid API key. Check openrouter.ai/keys.'
+        : r.status === 403 ? 'Key lacks permission. Regenerate with default scope.'
+        : r.status === 429 ? 'Rate limited. Wait a moment and try again.'
+        : r.status === 402 ? 'Key has no credits remaining.'
+        : `OpenRouter returned ${r.status}. Try again later.`;
+      return { ok: false, error: msg };
     }
     const data = await r.json().catch(() => ({} as any));
     const info = (data && (data.data || data)) || {};
     return { ok: true, label: info.label, limit: info.limit ?? null };
   } catch (e: any) {
-    return { ok: false, error: e?.message || 'Network error' };
+    return { ok: false, error: 'Network error — check your connection.' };
   }
 }
 
@@ -367,12 +373,12 @@ export async function testOllamaEndpoint(baseUrl: string): Promise<{ ok: boolean
   try {
     const url = baseUrl.replace(/\/+$/, '') + '/api/tags';
     const r = await fetch(url);
-    if (!r.ok) return { ok: false, error: `${r.status}` };
+    if (!r.ok) return { ok: false, error: `Ollama returned ${r.status}. Check the URL and that Ollama is running.` };
     const data = await r.json();
     const models = (data.models || []).map((m: any) => m.name);
     return { ok: true, models };
   } catch (e: any) {
-    return { ok: false, error: e?.message || 'Unreachable' };
+    return { ok: false, error: 'Unreachable — check URL, port, and that Ollama is running.' };
   }
 }
 

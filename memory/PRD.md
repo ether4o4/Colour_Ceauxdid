@@ -1,113 +1,129 @@
 # Colour Ceauxdid — PRD & Change Log
 
-## Original problem statement
-> The addiction of api keys or local models either one are not functional as well as
-> a few other things, like when saving a configuration it doesn't seem persistent.
-> The save doesn't actually work. Analyze the full app for 100% functionality of
-> entire scope.
->
-> Additional scope (clarification from user):
-> - 1-on-1 chats with each "colour" must be persistent and independent (Red, Blue,
->   Green, Yellow, Purple — can all be open simultaneously but separately).
-> - Group chat must be separate from individual chat, with memory flowing FROM
->   group chat INTO individual chat, but NOT the other way.
-> - Multiple API keys per provider for simultaneous multi-agent use.
-
 ## App summary
 Colour Ceauxdid is a React Native / Expo multi-agent AI chat app. 5 built-in
-color-coded agents (Red = command, Blue = logic, Green = execution, Yellow =
-creative, Purple = memory) plus up to 5 custom agents. BYOK via OpenRouter or
-Ollama. All data persisted locally via AsyncStorage (localStorage on web).
+color-coded agents (Red/Blue/Green/Yellow/Purple) plus up to 5 custom agents.
+BYOK via OpenRouter or Ollama. All data persisted locally via AsyncStorage
+(localStorage on web) — secrets live in expo-secure-store on native.
 Runs on port 3000 via Expo Web in the preview environment.
 
 ## Tech stack
-- React Native 0.81 + Expo 54 (web + native)
+- React Native 0.81 + Expo 54
 - React Navigation (bottom tabs + stack)
-- AsyncStorage for all persistence — no backend
-- OpenRouter (hosted multi-provider) + Ollama (local) via `fetch` streaming
+- AsyncStorage + expo-secure-store for persistence
+- OpenRouter (hosted) + Ollama (local) via fetch streaming
+- No backend
 
-## User personas
-- Power-user tinkering with multiple AI agents for research / planning / coding
-- Adds own OpenRouter key or points at a local Ollama instance
-- Wants isolated per-agent conversations AND group "swarm" chats
+## Original problem statement (v1)
+> The addiction of api keys or local models either one are not functional as well as
+> a few other things, like when saving a configuration it doesn't seem persistent.
+> Also: 1-on-1 per-color persistent chats separate from each other, group chats
+> separate from 1-on-1s with group→1-on-1 memory flow, multiple API keys for
+> simultaneous multi-agent use.
 
-## What was implemented in this session (2026-01)
-- **Scope-aware message storage** (`src/store/index.ts`): messages now live in
-  `cc_msgs_agent_<id>` or `cc_msgs_project_<id>` buckets. Added `ChatScope`
-  type, `getMessages(scope)`, `saveMessage(msg, scope)`, `updateMessage`,
-  `clearScope`, `clearAllMessages`, `getGroupMessagesForAgent(agentId)`.
-- **One-time migration** of the legacy single `cc_messages` bucket to
-  `cc_msgs_project_legacy` so old conversations aren't dropped.
-- **API Keys CRUD** in store: `getApiKeys/saveApiKey/deleteApiKey/markApiKeyUsed`
-  with multi-key support per provider, label, isActive flag.
-- **Provider settings**: `getProviderSettings/updateProviderSettings` holding
-  `defaultProvider` (openrouter|ollama), `defaultModel`, `ollamaModel`.
-- **Multi-provider LLM dispatch** (`src/utils/api.ts`): removed hardcoded
-  OpenRouter key, added round-robin `pickKey()`, `streamAgentResponse` routes
-  to either OpenRouter (`/chat/completions` streaming) or Ollama (`/api/chat`
-  streaming). Added `testOpenRouterKey` (via `/auth/key` — auth-required) and
-  `testOllamaEndpoint` (via `/api/tags`).
-- **Chat scope + memory rule** (`src/components/ChatMainArea.tsx`):
-  `buildContextForAgent` merges private history + group-chat history from
-  projects the agent participates in — only for LLM context, never into the
-  rendered message list. Group-scope reads only that project's messages.
-- **API Keys UI** (`src/screens/SettingsScreen.tsx`): new section with provider
-  toggle, model picker, add-key modal with live validation, multi-key list with
-  per-key isActive switch and delete.
-- **New chat UX**: in-bubble error rendering when LLM call fails, per-chat
-  "Clear this chat" menu, scope tag badges (1-on-1 / GROUP / ARCHIVED) in
-  header, better empty states with memory-rule explainer.
-- **Project creation race fix**: sidebar's `handleCreateProject` now calls
-  `onDataChanged?.()` before `onSelectProject()`; ChatHub's `handleSelectProject`
-  auto-reloads when given an unknown project id.
-- **Security**: removed leaked OpenRouter key from `src/utils/api.ts`. No more
-  hardcoded secrets in source.
+## v2.0 scope (this session)
+User approved 5-batch feature expansion in order E → D → B → A → C:
+- E. Secure-store for API keys (expo-secure-store, obfuscated web fallback)
+- D. Cost/token ledger (per-chat footer, 30-day total in Settings)
+- B. Agent-to-agent @-mention chaining in group chats (depth-capped at 3)
+- A. Route-to menu on any message (Continue-in-DM, Ask another, Pin memory, Copy, Delete)
+- C. Original 4: GitHub/Drive PAT integrations, inline modal errors, per-agent
+     model/key pinning, real workflow step editor
+- Bonus: slash commands (/plan /code /brainstorm /factcheck /remember /ask /swarm),
+  JSON export/import backup, per-agent pinned-memory viewer.
 
-## What was deleted / cleaned up
-- `/app/backend/providers.py` (unused — no backend for this app)
-- Legacy single-bucket message reads from `cc_messages` (migrated, not dropped)
+## What's been implemented, with dates
 
-## Verified by automated testing (3 iterations)
-- Chat isolation: Red/Blue/Green/Yellow/Purple 1-on-1s all independent
-- Persistence: messages survive page reload, stay in their own scope
-- Group vs 1-on-1 separation: group messages don't appear in 1-on-1 views
-- Invalid OpenRouter key correctly rejected (iteration 2 fix)
-- Invalid Ollama endpoint correctly rejected
-- Group project creation → chat view renders → send works → no leakage (iteration 3 fix)
-- No hardcoded API keys anywhere in source tree
+### 2026-01 — v1.0 (previous session)
+- Scope-aware message storage per 1-on-1 and per project
+- API Keys CRUD UI with live validation against /auth/key
+- Ollama local provider support
+- Group→1-on-1 memory inheritance via buildContextForAgent
+- Multi-key round-robin
+- Project creation race fix
+- Removed leaked hardcoded OpenRouter key from source
+- 3 testing-agent iterations, 100% pass
 
-## Prioritized backlog / nice-to-haves (not done, not blocking)
-- P2 Replace `Alert.alert` with inline `<Text>` error inside API-key modals
-  (cleaner UX on web, easier test automation)
-- P2 Per-agent "preferred key" assignment (currently round-robin across all
-  active keys of the chosen provider)
-- P2 Workflow steps UI (save-workflow currently saves an empty `steps: []`
-  because there's no step editor yet)
-- P2 Real GitHub / Drive asset connection OAuth (UI mockup only today)
-- P2 Export / import per-chat archives
+### 2026-01 — v2.0 (this session)
+- **E. Secure storage**: new `src/utils/secureStorage.ts` — expo-secure-store on
+  native, xor+base64 obfuscated AsyncStorage on web. ApiKey now holds only a
+  `secretKey` reference; actual secret lives under `cc_sec_apikey:<id>`.
+  Migration converts any v1 plaintext secrets into secure store on first read.
+- **D. Cost ledger**: `cc_usage_ledger` entries logged on every completion.
+  OpenRouter streaming now requests `stream_options.include_usage:true` and
+  falls back to `/generation?id=` for cost. Ollama derives tokens from
+  `prompt_eval_count`/`eval_count`. Settings shows 30-day totals with
+  per-chat footer in chat header.
+- **B. @-mention chaining**: `extractAgentMentions` in `src/utils/commands.ts`.
+  `streamAgentMessage(agent, text, chainDepth=0)` with `MAX_MENTION_CHAIN = 3`.
+  Self-loop, non-member, and user-token filters prevent runaway chains.
+- **A. Route menu**: new `src/components/MessageActionsMenu.tsx`. Tap any bubble
+  opens an action sheet with Continue-in-DM, Ask-another, Pin-memory, Copy, Delete.
+  Continue-in-DM flows through ChatHub.handleContinueInDm which sets a continuity
+  banner on the target agent's 1-on-1. Pinned memories stored under
+  `cc_pinned_memories` and auto-injected into that agent's system prompt on
+  future calls.
+- **C1. GitHub / Drive integrations** (`src/utils/integrations.ts`): PAT-based
+  BYOK. `testGitHubToken` against `/user`, `testGoogleDriveToken` against
+  `/drive/v3/about`. Tokens stored in secure-store under `cc_sec_asset:<id>`.
+- **C2. Inline errors**: every modal now renders failures as red `<Text>`
+  inside the modal. No more `Alert.alert` for validation.
+- **C3. Per-agent model/key pinning**: `CoreAgentPrefs` store. Settings
+  "PER-AGENT MODEL PINNING" section opens a per-agent modal to pick model
+  + API key. Agent-level pinning overrides global default in
+  `resolveAgentProviderAndModel`.
+- **C4. Workflow editor**: real step cards in Settings → WORKFLOWS. Each step
+  has agent chips (R/B/G/Y/P) + instruction text + delete. Inline validation
+  errors. Steps persist in `cc_workflows`.
+- **Bonus — Slash commands**: typing `/` shows inline dropdown; full reference
+  modal in chat ⋮ menu. `/remember <fact>` auto-pins to Purple's memory.
+- **Bonus — JSON backup**: Settings → Backup & Restore. Export triggers web
+  file download or native Share sheet. Import pastes JSON and restores all
+  except secrets (by design).
+- **Bonus — Pinned-memory viewer**: AgentsScreen core cards tappable; modal
+  lists pinned memories for that agent with remove button and mem count badge.
 
-## Known minor issues (non-blocking)
-- React Native web throws a `props.pointerEvents` deprecation warning
-  (harmless, from library internals)
-- Some Expo peer versions are slightly newer than Expo 54 expects
-  (gesture-handler 2.31 vs 2.28). App works; upgrade later.
+## Testing
+- Iteration 4 (v2.0): all graded items PASS. Zero bugs found.
+- Test reports: `/app/test_reports/iteration_{1..4}.json`
+
+## Known minor (non-blocking)
+- Web xor+b64 secret obfuscation is NOT cryptographic — documented explicitly.
+  Real web security would need WebCrypto + passphrase (separate flow).
+- Google Drive OAuth tokens from OAuth Playground are short-lived (~1h).
+  A proper refresh-token flow is a future task if Drive becomes heavily used.
+- Workflow runtime (one-click execute of a saved workflow) not yet built; this
+  iteration implemented the EDITOR. Runtime is a natural next step.
 
 ## Security action required BY USER
-- Revoke both OpenRouter keys that were exposed:
-  - `sk-or-v1-0497a19ada...1386` (in public GitHub history)
+- Rotate both OpenRouter keys that were exposed in previous session:
+  - `sk-or-v1-0497a19ada...1386` (public GitHub history)
   - `sk-or-v1-a58c8342de...5824` (shared in chat)
-  Replace with fresh keys added via the Settings → API Keys UI.
+  Replace with fresh keys via Settings → API Keys.
 
-## Files touched
-- `/app/frontend/package.json` — start script → `expo start --web --port 3000`; added `react-native-worklets`
-- `/app/frontend/src/store/index.ts` — scope-aware persistence + API keys + provider settings
-- `/app/frontend/src/utils/api.ts` — multi-provider dispatch, BYOK, validators
-- `/app/frontend/src/components/ChatMainArea.tsx` — scope-aware, memory inheritance, error bubbles
-- `/app/frontend/src/screens/SettingsScreen.tsx` — API Keys & Providers UI
-- `/app/frontend/src/screens/ChatHub.tsx` — safe project selection
-- `/app/frontend/src/components/SidebarNavigation.tsx` — onDataChanged prop, testIDs
+## Prioritized backlog / next
+- P1 Workflow RUN button + progress UI (editor is done, runner is not)
+- P2 Voice input (Whisper via OpenAI key)
+- P2 Image attachments (vision-capable models via OpenRouter)
+- P2 Agent emoji/avatar picker for custom agents
+- P2 Dark/light theme toggle
+- P3 Share-a-chat via public URL (requires backend)
+- P3 Real Google Drive refresh-token OAuth flow
 
-## Test reports
-- `/app/test_reports/iteration_1.json` — initial full sweep (12/13 pass)
-- `/app/test_reports/iteration_2.json` — retest after first fix (3 pass, 1 partial)
-- `/app/test_reports/iteration_3.json` — final retest (100% pass)
+## Files touched this session (v2.0)
+- `src/types/index.ts` — added UsageEntry, MessageUsage, PinnedMemory, ExternalAsset expanded
+- `src/utils/secureStorage.ts` (new)
+- `src/utils/commands.ts` (new)
+- `src/utils/integrations.ts` (new)
+- `src/utils/api.ts` — per-agent resolution, usage logging, friendlier errors
+- `src/store/index.ts` — big expansion: secure keys, usage ledger, pinned memories,
+  core agent prefs, export/import, deleteMessage, external-asset secrets
+- `src/components/MessageBubble.tsx` — tappable + usage tag
+- `src/components/MessageActionsMenu.tsx` (new)
+- `src/components/ChatMainArea.tsx` — slash commands, @-chaining, action menu,
+  continuity banner, cost tag, inline save-error
+- `src/screens/ChatHub.tsx` — continueContext plumbing for Continue-in-DM
+- `src/screens/SettingsScreen.tsx` — major rewrite: usage section, per-agent
+  pinning, integrations, workflow editor, backup/restore, inline errors
+- `src/screens/AgentsScreen.tsx` — tap core agents to view pinned memories
+- `package.json` — added expo-secure-store, expo-clipboard
