@@ -8,7 +8,8 @@ import { SwarmAgent } from '../types';
 import { COLORS } from '../utils/theme';
 import { DEFAULT_AGENTS } from '../agents/config';
 import { AGENT_TEMPLATES, AgentTemplate, buildAgentSystemPrompt, getTemplateById } from '../agents/templates';
-import { getCustomAgents, saveCustomAgent, deleteCustomAgent } from '../store';
+import { getCustomAgents, saveCustomAgent, deleteCustomAgent, getPinnedMemories, removePinnedMemory } from '../store';
+import { PinnedMemory } from '../types';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -24,6 +25,8 @@ type ModalState =
 export default function AgentsScreen() {
   const [customAgents, setCustomAgents] = useState<SwarmAgent[]>([]);
   const [modal, setModal] = useState<ModalState>({ type: 'none' });
+  const [pinnedMems, setPinnedMems] = useState<PinnedMemory[]>([]);
+  const [showMemsForAgent, setShowMemsForAgent] = useState<string | null>(null);
 
   // Form state
   const [agentName, setAgentName] = useState('');
@@ -31,6 +34,7 @@ export default function AgentsScreen() {
 
   const load = useCallback(async () => {
     setCustomAgents(await getCustomAgents());
+    setPinnedMems(await getPinnedMemories());
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -134,11 +138,16 @@ export default function AgentsScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
 
-        {/* Core agents — view only */}
-        <Text style={styles.sectionLabel}>CORE AGENTS</Text>
-        {DEFAULT_AGENTS.map(agent => (
-          <CoreAgentCard key={agent.id} agent={agent} />
-        ))}
+        {/* Core agents — view only, tap to see pinned memories */}
+        <Text style={styles.sectionLabel}>CORE AGENTS · TAP FOR PINNED MEMORIES</Text>
+        {DEFAULT_AGENTS.map(agent => {
+          const count = pinnedMems.filter(m => m.agentId === agent.id).length;
+          return (
+            <TouchableOpacity key={agent.id} onPress={() => setShowMemsForAgent(agent.id)}>
+              <CoreAgentCard agent={agent} memCount={count} />
+            </TouchableOpacity>
+          );
+        })}
 
         {/* Custom slots */}
         <View style={styles.sectionRow}>
@@ -263,12 +272,62 @@ export default function AgentsScreen() {
           </View>
         </Modal>
       )}
+      {/* Pinned memories modal */}
+      <Modal visible={!!showMemsForAgent} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <View>
+                <Text style={styles.sheetTitle}>PINNED MEMORIES</Text>
+                {showMemsForAgent && (() => {
+                  const a = DEFAULT_AGENTS.find(x => x.id === showMemsForAgent);
+                  return a ? (
+                    <View style={styles.templateBadge}>
+                      <View style={[styles.templateDotSm, { backgroundColor: a.colorHex }]} />
+                      <Text style={[styles.templateBadgeText, { color: a.colorHex }]}>
+                        {a.name.toUpperCase()}
+                      </Text>
+                    </View>
+                  ) : null;
+                })()}
+              </View>
+              <TouchableOpacity onPress={() => setShowMemsForAgent(null)}>
+                <Text style={styles.closeBtn}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={styles.formContent}>
+              {(() => {
+                const mems = pinnedMems.filter(m => m.agentId === showMemsForAgent);
+                if (mems.length === 0) {
+                  return (
+                    <Text style={{ color: '#888', fontSize: 12, lineHeight: 18 }}>
+                      No pinned memories yet. In any chat, tap a message → "Pin to an agent's memory".
+                    </Text>
+                  );
+                }
+                return mems.map(m => (
+                  <View key={m.id} style={styles.memCard}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.memKey}>{m.key}</Text>
+                      <Text style={styles.memValue}>{m.value}</Text>
+                      <Text style={styles.memMeta}>{new Date(m.createdAt).toLocaleDateString()}</Text>
+                    </View>
+                    <TouchableOpacity onPress={async () => { await removePinnedMemory(m.id); await load(); }}>
+                      <Text style={styles.deleteBtnText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ));
+              })()}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-// Core agent card — no edit/delete
-function CoreAgentCard({ agent }: { agent: SwarmAgent }) {
+// Core agent card — tappable now to show pinned memory modal
+function CoreAgentCard({ agent, memCount = 0 }: { agent: SwarmAgent; memCount?: number }) {
   return (
     <View style={[styles.card, { borderLeftColor: agent.colorHex }]}>
       <View style={[styles.cardDot, { backgroundColor: agent.colorHex }]} />
@@ -277,6 +336,11 @@ function CoreAgentCard({ agent }: { agent: SwarmAgent }) {
         <Text style={styles.cardSpecialty}>{agent.specialty}</Text>
         <Text style={styles.cardPersonality}>{agent.personality}</Text>
       </View>
+      {memCount > 0 && (
+        <View style={[styles.memBadge, { backgroundColor: agent.colorHex + '20', borderColor: agent.colorHex + '60' }]}>
+          <Text style={[styles.memBadgeText, { color: agent.colorHex }]}>{memCount} pinned</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -406,4 +470,17 @@ const styles = StyleSheet.create({
     borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 12,
   },
   deployBtnText: { color: '#000', fontSize: 13, fontWeight: '800', letterSpacing: 1.5 },
+  memBadge: {
+    borderWidth: 1, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3,
+    alignSelf: 'flex-start',
+  },
+  memBadgeText: { fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  memCard: {
+    flexDirection: 'row', gap: 10,
+    backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#333',
+    borderRadius: 8, padding: 12, marginBottom: 8,
+  },
+  memKey: { color: '#fff', fontSize: 12, fontWeight: '800', letterSpacing: 1, marginBottom: 4 },
+  memValue: { color: '#ccc', fontSize: 13, lineHeight: 18 },
+  memMeta: { color: '#666', fontSize: 10, marginTop: 6 },
 });

@@ -11,6 +11,10 @@ export interface SwarmAgent {
   steeringPrompts?: string[];
   load: number;
   status: 'idle' | 'thinking' | 'active';
+  // Per-agent provider/model/key pinning (optional — falls back to global defaults).
+  preferredProvider?: 'openrouter' | 'ollama';
+  preferredModel?: string;
+  preferredKeyId?: string;
 }
 
 export interface SwarmMessage {
@@ -23,6 +27,32 @@ export interface SwarmMessage {
   timestamp: number;
   taskId?: string;
   replyToId?: string;
+  // Filled in when the assistant response completes; used by the cost ledger.
+  usage?: MessageUsage;
+  // For continuity hints like "continuing from group X" banners.
+  contextNote?: string;
+}
+
+export interface MessageUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costUsd?: number;
+  model: string;
+  provider: 'openrouter' | 'ollama';
+}
+
+export interface UsageEntry {
+  id: string;
+  timestamp: number;
+  scopeKey: string;      // same key scheme as messages: cc_msgs_agent_<id> / cc_msgs_project_<id>
+  agentId: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  model: string;
+  provider: 'openrouter' | 'ollama';
 }
 
 export interface Task {
@@ -45,8 +75,19 @@ export interface Workflow {
 }
 
 export interface WorkflowStep {
+  id: string;
   agentId: string;
   instruction: string;
+}
+
+export interface PinnedMemory {
+  id: string;
+  agentId: string;
+  key: string;       // short label; used as the "name" of the fact
+  value: string;     // the actual fact content
+  sourceMessageId?: string;
+  sourceScopeKey?: string;
+  createdAt: number;
 }
 
 export interface AgentMemoryEntry {
@@ -59,7 +100,7 @@ export interface Project {
   id: string;
   name: string;
   description?: string;
-  agents: string[]; // agent IDs
+  agents: string[];
   createdAt: number;
   updatedAt: number;
   isActive: boolean;
@@ -78,7 +119,12 @@ export interface SavedChat {
 export interface ExternalAsset {
   id: string;
   type: 'github' | 'gitlab' | 'gdrive' | 'onedrive';
-  token?: string;
+  label: string;
+  // Metadata only. The actual token is stored via secureStorage and looked up by secretKey.
+  secretKey: string;
+  // GitHub / GitLab: username/owner. GDrive: email. Optional metadata.
+  accountRef?: string;
   connected: boolean;
   connectedAt?: number;
+  lastCheckedAt?: number;
 }

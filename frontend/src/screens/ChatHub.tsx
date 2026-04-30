@@ -24,6 +24,20 @@ export default function ChatHub() {
   const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
   const [customAgents, setCustomAgents] = useState<SwarmAgent[]>([]);
 
+  // When "Continue in X's DM" is triggered from a group chat, this holds the
+  // continuity context for the *next* agent view to display as a banner.
+  const [continueContext, setContinueContext] = useState<
+    { forAgentId: string; fromProjectName: string; sourceText: string } | undefined
+  >();
+
+  function handleContinueInDm(
+    targetAgentId: string,
+    ctx: { fromProjectName: string; sourceText: string },
+  ) {
+    setContinueContext({ forAgentId: targetAgentId, ...ctx });
+    handleSelectAgent(targetAgentId);
+  }
+
   // Mobile panel state — shows list picker when no item selected
   const [mobilePanelVisible, setMobilePanelVisible] = useState(false);
 
@@ -237,9 +251,24 @@ export default function ChatHub() {
           )}
 
           {activeSection === 'project' && activeProject ? (
-            <ChatMainArea project={activeProject} mode="project" onDataChange={loadData} />
+            <ChatMainArea
+              project={activeProject}
+              mode="project"
+              onDataChange={loadData}
+              onContinueInDm={handleContinueInDm}
+            />
           ) : activeSection === 'agent' && activeAgentId ? (
-            <ChatMainArea agentId={activeAgentId} mode="agent" onDataChange={loadData} />
+            <ChatMainArea
+              agentId={activeAgentId}
+              mode="agent"
+              onDataChange={loadData}
+              continueContext={
+                continueContext && continueContext.forAgentId === activeAgentId
+                  ? { fromProjectName: continueContext.fromProjectName, sourceText: continueContext.sourceText }
+                  : undefined
+              }
+              onContinueInDm={handleContinueInDm}
+            />
           ) : activeSection === 'saved' && activeSavedChat ? (
             <ChatMainArea savedChat={activeSavedChat} mode="saved" onDataChange={loadData} />
           ) : (
