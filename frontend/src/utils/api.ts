@@ -278,28 +278,6 @@ export async function streamAgentResponse(
 ): Promise<void> {
   const { provider, model, keyId } = await resolveAgentProviderAndModel(agent);
 
-  const key = await pickKeyForAgent(provider, keyId);
-  if (!key) {
-    onError(
-      provider === 'openrouter'
-        ? 'No active OpenRouter API key. Open Settings → API Keys to add one.'
-        : 'No active Ollama endpoint. Open Settings → API Keys to add a base URL.'
-    );
-    return;
-  }
-  const secret = await resolveApiKeySecret(key);
-  if (!secret) {
-    onError('Selected API key has no stored secret — re-add it in Settings.');
-    return;
-  }
-
-  const systemPrompt = await buildSystemPrompt(agent);
-  const apiMessages = buildApiMessages(chatHistory, userMessage);
-
-  const temperature =
-    agent.id === 'yellow' ? 0.9 :
-    agent.id === 'red' ? 0.3 : 0.7;
-
   const wrappedDone = async (usage?: MessageUsage) => {
     if (usage && context?.scopeKey) {
       try {
@@ -320,13 +298,88 @@ export async function streamAgentResponse(
     (onDone as any)(usage);
   };
 
-  if (provider === 'openrouter') {
-    return openrouterStream(secret, model, systemPrompt, apiMessages, temperature, onChunk, wrappedDone, onError);
+  // Build a single attempt for one specific provider/model/key
+  const attempt = async (p: 'openrouter' | 'ollama', m: string, kId?: string): Promise<{ ok: boolean; error?: string; was404?: boolean }> => {
+    const k = await pickKeyForAgent(p, kId);
+    if (!k) return { ok: false, error: 'no-key' };
+    const secret = await resolveApiKeySecret(k);
+    if (!secret) return { ok: false, error: 'no-secret' };
+
+    const systemPrompt = await buildSystemPrompt(agent);
+    const apiMessages = buildApiMessages(chatHistory, userMessage);
+    const temperature = agent.id === 'yellow' ? 0.9 : agent.id === 'red' ? 0.3 : 0.7;
+
+    let chunks = 0;
+    let caughtErr: string | undefined;
+    let caughtUsage: MessageUsage | undefined;
+    const wrapChunk = (c: string) => { chunks++; onChunk(c); };
+
+    await new Promise<void>((resolve) => {
+      const onDoneInner = (u?: MessageUsage) => { caughtUsage = u; resolve(); };
+      const onErrInner = (e: string) => { caughtErr = e; resolve(); };
+      if (p === 'openrouter') {
+        openrouterStream(secret, m, systemPrompt, apiMessages, temperature, wrapChunk, onDoneInner, onErrInner);
+      } else {
+        ollamaStream(secret, m, systemPrompt, apiMessages, temperature, wrapChunk, onDoneInner, onErrInner);
+      }
+    });
+
+    if (caughtErr) {
+      const is404 = /\b404\b|no endpoints found/i.test(caughtErr);
+      return { ok: false, error: caughtErr, was404: is404 };
+    }
+    if (chunks === 0) return { ok: false, error: 'empty response' };
+    await wrappedDone(caughtUsage);
+    return { ok: true };
+  };
+
+  // ── Primary attempt ──
+  const primary = await attempt(provider, model, keyId);
+  if (primary.ok) return;
+
+  // ── Fallback strategy ──
+  // 1. If model 404'd on OpenRouter, retry with the known-good free default.
+  // 2. If Ollama failed (unreachable / bad model), fall back to OpenRouter.
+  // 3. If no-key, surface the friendly error immediately.
+  if (primary.error === 'no-key') {
+    onError(
+      provider === 'openrouter'
+        ? 'No active OpenRouter API key. Open Settings → API Keys to add one.'
+        : 'No active Ollama endpoint. Open Settings → API Keys to add a base URL.'
+    );
+    return;
   }
+  if (primary.error === 'no-secret') {
+    onError('Selected API key has no stored secret — re-add it in Settings.');
+    return;
+  }
+
+  // Retry #1: model deprecated on OpenRouter → swap to known-good free default
+  if (provider === 'openrouter' && primary.was404) {
+    const FALLBACK_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
+    if (model !== FALLBACK_MODEL) {
+      const retry = await attempt('openrouter', FALLBACK_MODEL, keyId);
+      if (retry.ok) return;
+    }
+    const FALLBACK_MODEL_2 = 'deepseek/deepseek-chat-v3.1:free';
+    if (model !== FALLBACK_MODEL_2) {
+      const retry2 = await attempt('openrouter', FALLBACK_MODEL_2, keyId);
+      if (retry2.ok) return;
+    }
+  }
+
+  // Retry #2: Local Ollama failed → fall back to OpenRouter if any active key exists
   if (provider === 'ollama') {
-    return ollamaStream(secret, model, systemPrompt, apiMessages, temperature, onChunk, wrappedDone, onError);
+    const orKeys = await keysForProvider('openrouter');
+    if (orKeys.length > 0) {
+      const orSettings = await getProviderSettings();
+      const retry = await attempt('openrouter', orSettings.defaultModel, undefined);
+      if (retry.ok) return;
+    }
   }
-  onError(`Unknown provider: ${provider}`);
+
+  // All retries exhausted — surface primary error
+  onError(primary.error || 'Request failed');
 }
 
 export async function getSingleAgentResponse(

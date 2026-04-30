@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Platform,
   StatusBar, ScrollView, TextInput, Switch, Modal, ActivityIndicator, Share,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
@@ -27,15 +28,19 @@ import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 
 const QUICK_MODELS = [
-  { id: 'meta-llama/llama-3.1-8b-instruct:free', label: 'Llama 3.1 8B (free)' },
-  { id: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash (free)' },
-  { id: 'mistralai/mistral-7b-instruct:free', label: 'Mistral 7B (free)' },
-  { id: 'openai/gpt-4o-mini', label: 'GPT-4o Mini' },
-  { id: 'openai/gpt-4o', label: 'GPT-4o' },
-  { id: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
-  { id: 'anthropic/claude-3.5-haiku', label: 'Claude 3.5 Haiku' },
-  { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
-  { id: 'deepseek/deepseek-chat', label: 'DeepSeek Chat' },
+  // Free tier (verified available 2026)
+  { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (free)' },
+  { id: 'deepseek/deepseek-chat-v3.1:free', label: 'DeepSeek V3.1 (free)' },
+  { id: 'deepseek/deepseek-r1:free', label: 'DeepSeek R1 reasoning (free)' },
+  { id: 'nousresearch/hermes-3-llama-3.1-405b:free', label: 'Hermes 3 405B (free)' },
+  { id: 'qwen/qwen-2.5-72b-instruct:free', label: 'Qwen 2.5 72B (free)' },
+  { id: 'qwen/qwen-2.5-coder-32b-instruct:free', label: 'Qwen 2.5 Coder 32B (free)' },
+  // Paid but popular
+  { id: 'openai/gpt-4o-mini', label: 'GPT-4o Mini (paid)' },
+  { id: 'openai/gpt-4o', label: 'GPT-4o (paid)' },
+  { id: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet (paid)' },
+  { id: 'anthropic/claude-3.5-haiku', label: 'Claude 3.5 Haiku (paid)' },
+  { id: 'deepseek/deepseek-chat', label: 'DeepSeek Chat (paid)' },
 ];
 
 const MS_30_DAYS = 30 * 24 * 60 * 60 * 1000;
@@ -515,43 +520,45 @@ export default function SettingsScreen() {
 
       {/* Add API Key Modal (inline errors) */}
       <Modal visible={showAddKey} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>ADD API KEY / ENDPOINT</Text>
-            <Text style={styles.fieldLabel}>PROVIDER</Text>
-            <View style={styles.providerPickRow}>
-              {(['openrouter', 'ollama'] as ApiProvider[]).map(p => (
-                <TouchableOpacity key={p} onPress={() => setNewKeyProvider(p)}
-                  style={[styles.providerPick, newKeyProvider === p && styles.providerPickActive]}>
-                  <Text style={[styles.providerPickText, newKeyProvider === p && { color: COLORS.text }]}>
-                    {p === 'openrouter' ? 'OpenRouter' : 'Ollama'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={styles.fieldLabel}>LABEL (optional)</Text>
-            <TextInput style={styles.input}
-              placeholder={newKeyProvider === 'openrouter' ? 'Personal OpenRouter…' : 'Home Ollama…'}
-              placeholderTextColor={COLORS.muted}
-              value={newKeyLabel} onChangeText={setNewKeyLabel} />
-            <Text style={styles.fieldLabel}>{newKeyProvider === 'openrouter' ? 'API KEY' : 'BASE URL'}</Text>
-            <TextInput style={styles.input}
-              placeholder={newKeyProvider === 'openrouter' ? 'sk-or-v1-…' : 'http://localhost:11434'}
-              placeholderTextColor={COLORS.muted}
-              value={newKeySecret}
-              onChangeText={v => { setNewKeySecret(v); if (newKeyError) setNewKeyError(''); }}
-              autoCapitalize="none" autoCorrect={false}
-              secureTextEntry={newKeyProvider === 'openrouter'}
-              testID="new-key-secret" />
-            {newKeyError ? <Text style={styles.inlineError}>{newKeyError}</Text> : null}
-            <Text style={styles.hintText}>
-              {newKeyProvider === 'openrouter'
-                ? 'Get a key at openrouter.ai/keys. Stored in device keychain — never leaves your device.'
-                : 'Point to any reachable Ollama server. Pull models first with `ollama pull llama3.3`.'}
-            </Text>
+            <ScrollView style={{ maxHeight: 460 }} keyboardShouldPersistTaps="handled">
+              <Text style={styles.fieldLabel}>PROVIDER</Text>
+              <View style={styles.providerPickRow}>
+                {(['openrouter', 'ollama'] as ApiProvider[]).map(p => (
+                  <TouchableOpacity key={p} onPress={() => setNewKeyProvider(p)}
+                    style={[styles.providerPick, newKeyProvider === p && styles.providerPickActive]}>
+                    <Text style={[styles.providerPickText, newKeyProvider === p && { color: COLORS.text }]}>
+                      {p === 'openrouter' ? 'OpenRouter' : 'Ollama'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.fieldLabel}>LABEL (optional)</Text>
+              <TextInput style={styles.input}
+                placeholder={newKeyProvider === 'openrouter' ? 'Personal OpenRouter…' : 'Home Ollama…'}
+                placeholderTextColor={COLORS.muted}
+                value={newKeyLabel} onChangeText={setNewKeyLabel} />
+              <Text style={styles.fieldLabel}>{newKeyProvider === 'openrouter' ? 'API KEY' : 'BASE URL'}</Text>
+              <TextInput style={styles.input}
+                placeholder={newKeyProvider === 'openrouter' ? 'sk-or-v1-…' : 'http://localhost:11434'}
+                placeholderTextColor={COLORS.muted}
+                value={newKeySecret}
+                onChangeText={v => { setNewKeySecret(v); if (newKeyError) setNewKeyError(''); }}
+                autoCapitalize="none" autoCorrect={false}
+                secureTextEntry={newKeyProvider === 'openrouter'}
+                testID="new-key-secret" />
+              {newKeyError ? <Text style={styles.inlineError}>{newKeyError}</Text> : null}
+              <Text style={styles.hintText}>
+                {newKeyProvider === 'openrouter'
+                  ? 'Get a key at openrouter.ai/keys. Stored in device keychain — never leaves your device.'
+                  : 'Point to any reachable Ollama server. Pull models first with `ollama pull llama3.3`.'}
+              </Text>
+            </ScrollView>
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalButton} onPress={() => setShowAddKey(false)}>
-                <Text style={styles.modalButtonText}>Cancel</Text>
+              <TouchableOpacity style={[styles.modalButton, styles.secondaryButton]} onPress={() => setShowAddKey(false)}>
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalButton, styles.primaryButton]}
                 onPress={handleSaveNewKey} disabled={testing} testID="save-api-key-button">
@@ -559,7 +566,7 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Model Picker */}
@@ -591,8 +598,8 @@ export default function SettingsScreen() {
                 </>
               )}
             </ScrollView>
-            <TouchableOpacity style={[styles.modalButton, { marginTop: 12 }]} onPress={() => setShowModelPicker(false)}>
-              <Text style={styles.modalButtonText}>Close</Text>
+            <TouchableOpacity style={[styles.modalButton, styles.primaryButton, { marginTop: 12 }]} onPress={() => setShowModelPicker(false)}>
+              <Text style={styles.primaryButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -600,17 +607,17 @@ export default function SettingsScreen() {
 
       {/* Workflow Editor */}
       <Modal visible={showWorkflowModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>NEW WORKFLOW</Text>
-            <Text style={styles.fieldLabel}>NAME</Text>
-            <TextInput style={styles.input}
-              placeholder="e.g. Plan → Build → Review"
-              placeholderTextColor={COLORS.muted}
-              value={wfName} onChangeText={setWfName} />
+            <ScrollView style={{ maxHeight: 480 }} keyboardShouldPersistTaps="handled">
+              <Text style={styles.fieldLabel}>NAME</Text>
+              <TextInput style={styles.input}
+                placeholder="e.g. Plan → Build → Review"
+                placeholderTextColor={COLORS.muted}
+                value={wfName} onChangeText={setWfName} />
 
-            <Text style={[styles.fieldLabel, { marginTop: 12 }]}>STEPS ({wfSteps.length})</Text>
-            <ScrollView style={{ maxHeight: 320 }}>
+              <Text style={[styles.fieldLabel, { marginTop: 12 }]}>STEPS ({wfSteps.length})</Text>
               {wfSteps.map((step, i) => {
                 const agent = DEFAULT_AGENTS.find(a => a.id === step.agentId);
                 return (
@@ -650,60 +657,62 @@ export default function SettingsScreen() {
               <TouchableOpacity style={styles.addStepBtn} onPress={addWfStep}>
                 <Text style={styles.addStepText}>+ ADD STEP</Text>
               </TouchableOpacity>
-            </ScrollView>
 
-            {wfError ? <Text style={styles.inlineError}>{wfError}</Text> : null}
+              {wfError ? <Text style={styles.inlineError}>{wfError}</Text> : null}
+            </ScrollView>
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalButton} onPress={() => setShowWorkflowModal(false)}>
-                <Text style={styles.modalButtonText}>Cancel</Text>
+              <TouchableOpacity style={[styles.modalButton, styles.secondaryButton]} onPress={() => setShowWorkflowModal(false)}>
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalButton, styles.primaryButton]} onPress={saveWf}>
                 <Text style={styles.primaryButtonText}>Save Workflow</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Add Asset */}
       <Modal visible={showAddAsset} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>CONNECT INTEGRATION</Text>
-            <Text style={styles.fieldLabel}>TYPE</Text>
-            <View style={styles.providerPickRow}>
-              {(['github', 'gdrive'] as ExternalAsset['type'][]).map(t => (
-                <TouchableOpacity key={t} onPress={() => setAssetType(t)}
-                  style={[styles.providerPick, assetType === t && styles.providerPickActive]}>
-                  <Text style={[styles.providerPickText, assetType === t && { color: COLORS.text }]}>
-                    {t === 'github' ? 'GITHUB' : 'GOOGLE DRIVE'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={styles.fieldLabel}>LABEL (optional)</Text>
-            <TextInput style={styles.input}
-              placeholder="Personal, Work, etc."
-              placeholderTextColor={COLORS.muted}
-              value={assetLabel} onChangeText={setAssetLabel} />
-            <Text style={styles.fieldLabel}>
-              {assetType === 'github' ? 'PERSONAL ACCESS TOKEN' : 'OAUTH ACCESS TOKEN'}
-            </Text>
-            <TextInput style={styles.input}
-              placeholder={assetType === 'github' ? 'ghp_... or github_pat_...' : 'ya29....'}
-              placeholderTextColor={COLORS.muted}
-              value={assetToken}
-              onChangeText={v => { setAssetToken(v); if (assetError) setAssetError(''); }}
-              autoCapitalize="none" autoCorrect={false} secureTextEntry />
-            {assetError ? <Text style={styles.inlineError}>{assetError}</Text> : null}
-            <Text style={styles.hintText}>
-              {assetType === 'github'
-                ? 'Create at github.com/settings/tokens with "repo" scope. Token saved securely on-device.'
-                : 'Get a short-lived access token at developers.google.com/oauthplayground (Drive API readonly scope). Expires ~1 hour.'}
-            </Text>
+            <ScrollView style={{ maxHeight: 460 }} keyboardShouldPersistTaps="handled">
+              <Text style={styles.fieldLabel}>TYPE</Text>
+              <View style={styles.providerPickRow}>
+                {(['github', 'gdrive'] as ExternalAsset['type'][]).map(t => (
+                  <TouchableOpacity key={t} onPress={() => setAssetType(t)}
+                    style={[styles.providerPick, assetType === t && styles.providerPickActive]}>
+                    <Text style={[styles.providerPickText, assetType === t && { color: COLORS.text }]}>
+                      {t === 'github' ? 'GITHUB' : 'GOOGLE DRIVE'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.fieldLabel}>LABEL (optional)</Text>
+              <TextInput style={styles.input}
+                placeholder="Personal, Work, etc."
+                placeholderTextColor={COLORS.muted}
+                value={assetLabel} onChangeText={setAssetLabel} />
+              <Text style={styles.fieldLabel}>
+                {assetType === 'github' ? 'PERSONAL ACCESS TOKEN' : 'OAUTH ACCESS TOKEN'}
+              </Text>
+              <TextInput style={styles.input}
+                placeholder={assetType === 'github' ? 'ghp_... or github_pat_...' : 'ya29....'}
+                placeholderTextColor={COLORS.muted}
+                value={assetToken}
+                onChangeText={v => { setAssetToken(v); if (assetError) setAssetError(''); }}
+                autoCapitalize="none" autoCorrect={false} secureTextEntry />
+              {assetError ? <Text style={styles.inlineError}>{assetError}</Text> : null}
+              <Text style={styles.hintText}>
+                {assetType === 'github'
+                  ? 'Create at github.com/settings/tokens with "repo" scope. Token saved securely on-device.'
+                  : 'Get a short-lived access token at developers.google.com/oauthplayground (Drive API readonly scope). Expires ~1 hour.'}
+              </Text>
+            </ScrollView>
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalButton} onPress={() => setShowAddAsset(false)}>
-                <Text style={styles.modalButtonText}>Cancel</Text>
+              <TouchableOpacity style={[styles.modalButton, styles.secondaryButton]} onPress={() => setShowAddAsset(false)}>
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalButton, styles.primaryButton]}
                 onPress={saveAsset} disabled={assetTesting}>
@@ -711,12 +720,12 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Per-agent model pin */}
       <Modal visible={!!showAgentPin} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modal}>
             {showAgentPin && (() => {
               const ag = DEFAULT_AGENTS.find(a => a.id === showAgentPin)!;
@@ -724,8 +733,8 @@ export default function SettingsScreen() {
               return (
                 <>
                   <Text style={[styles.modalTitle, { color: ag.colorHex }]}>PIN FOR {ag.name.toUpperCase()}</Text>
-                  <Text style={styles.fieldLabel}>MODEL</Text>
-                  <ScrollView style={{ maxHeight: 220 }}>
+                  <ScrollView style={{ maxHeight: 480 }} keyboardShouldPersistTaps="handled">
+                    <Text style={styles.fieldLabel}>MODEL</Text>
                     <TouchableOpacity
                       style={[styles.modelOption, !mine.preferredModel && styles.modelOptionActive]}
                       onPress={async () => { await setCoreAgentPref(ag.id, { preferredModel: undefined }); await loadAll(); }}>
@@ -740,34 +749,34 @@ export default function SettingsScreen() {
                         <Text style={styles.modelOptionId}>{m.id}</Text>
                       </TouchableOpacity>
                     ))}
-                  </ScrollView>
-                  <Text style={[styles.fieldLabel, { marginTop: 12 }]}>API KEY</Text>
-                  <TouchableOpacity
-                    style={[styles.modelOption, !mine.preferredKeyId && styles.modelOptionActive]}
-                    onPress={async () => { await setCoreAgentPref(ag.id, { preferredKeyId: undefined }); await loadAll(); }}>
-                    <Text style={styles.modelOptionLabel}>Round-robin (default)</Text>
-                  </TouchableOpacity>
-                  {apiKeys.filter(k => k.provider === 'openrouter').map(k => (
-                    <TouchableOpacity key={k.id}
-                      style={[styles.modelOption, mine.preferredKeyId === k.id && styles.modelOptionActive]}
-                      onPress={async () => { await setCoreAgentPref(ag.id, { preferredKeyId: k.id }); await loadAll(); }}>
-                      <Text style={styles.modelOptionLabel}>{k.label}</Text>
-                      <Text style={styles.modelOptionId}>{keyPreviews[k.id] || ''}</Text>
+                    <Text style={[styles.fieldLabel, { marginTop: 12 }]}>API KEY</Text>
+                    <TouchableOpacity
+                      style={[styles.modelOption, !mine.preferredKeyId && styles.modelOptionActive]}
+                      onPress={async () => { await setCoreAgentPref(ag.id, { preferredKeyId: undefined }); await loadAll(); }}>
+                      <Text style={styles.modelOptionLabel}>Round-robin (default)</Text>
                     </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity style={[styles.modalButton, { marginTop: 12 }]} onPress={() => setShowAgentPin(null)}>
-                    <Text style={styles.modalButtonText}>Done</Text>
+                    {apiKeys.filter(k => k.provider === 'openrouter').map(k => (
+                      <TouchableOpacity key={k.id}
+                        style={[styles.modelOption, mine.preferredKeyId === k.id && styles.modelOptionActive]}
+                        onPress={async () => { await setCoreAgentPref(ag.id, { preferredKeyId: k.id }); await loadAll(); }}>
+                        <Text style={styles.modelOptionLabel}>{k.label}</Text>
+                        <Text style={styles.modelOptionId}>{keyPreviews[k.id] || ''}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  <TouchableOpacity style={[styles.modalButton, styles.primaryButton, { marginTop: 12 }]} onPress={() => setShowAgentPin(null)} testID="pin-done-button">
+                    <Text style={styles.primaryButtonText}>Done</Text>
                   </TouchableOpacity>
                 </>
               );
             })()}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Import */}
       <Modal visible={showImport} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>IMPORT BACKUP JSON</Text>
             <TextInput
@@ -781,15 +790,15 @@ export default function SettingsScreen() {
             {importError ? <Text style={styles.inlineError}>{importError}</Text> : null}
             {importSuccess ? <Text style={styles.inlineSuccess}>{importSuccess}</Text> : null}
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalButton} onPress={() => setShowImport(false)}>
-                <Text style={styles.modalButtonText}>Cancel</Text>
+              <TouchableOpacity style={[styles.modalButton, styles.secondaryButton]} onPress={() => setShowImport(false)}>
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalButton, styles.primaryButton]} onPress={handleImportSubmit}>
                 <Text style={styles.primaryButtonText}>Import</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

@@ -376,15 +376,35 @@ export interface ProviderSettings {
   ollamaModel: string;
 }
 
+// Current free/reliable OpenRouter default as of 2026. Updated from the
+// previously-404'ing meta-llama/llama-3.1-8b-instruct:free.
 const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
   defaultProvider: 'openrouter',
-  defaultModel: 'meta-llama/llama-3.1-8b-instruct:free',
+  defaultModel: 'meta-llama/llama-3.3-70b-instruct:free',
   ollamaModel: 'llama3.3',
 };
 
+// Known-dead model IDs that should be auto-upgraded on load.
+const DEAD_MODEL_IDS = new Set([
+  'meta-llama/llama-3.1-8b-instruct:free',
+  'mistralai/mistral-7b-instruct:free',
+  'google/gemma-7b-it:free',
+  'meta-llama/llama-3.1-70b-instruct:free',
+  'meta-llama/llama-3.2-3b-instruct:free',
+  'google/gemini-2.0-flash-exp:free',
+  'google/gemma-2-9b-it:free',
+]);
+
 export async function getProviderSettings(): Promise<ProviderSettings> {
   const raw = await AsyncStorage.getItem(KEYS.PROVIDER_SETTINGS);
-  return raw ? { ...DEFAULT_PROVIDER_SETTINGS, ...JSON.parse(raw) } : DEFAULT_PROVIDER_SETTINGS;
+  const current = raw ? { ...DEFAULT_PROVIDER_SETTINGS, ...JSON.parse(raw) } : DEFAULT_PROVIDER_SETTINGS;
+  // Auto-heal any users still on a deprecated model ID.
+  if (DEAD_MODEL_IDS.has(current.defaultModel)) {
+    const healed = { ...current, defaultModel: DEFAULT_PROVIDER_SETTINGS.defaultModel };
+    await AsyncStorage.setItem(KEYS.PROVIDER_SETTINGS, JSON.stringify(healed));
+    return healed;
+  }
+  return current;
 }
 
 export async function updateProviderSettings(updates: Partial<ProviderSettings>): Promise<void> {

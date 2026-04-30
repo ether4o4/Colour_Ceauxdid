@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, Text, StyleSheet } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../utils/theme';
 
 import ChatHub from '../screens/ChatHub';
@@ -25,18 +26,31 @@ function TabIcon({ label, color, focused }: { label: string; color: string; focu
       <Text style={[styles.tabIconText, { color: focused ? color : COLORS.muted }]}>
         {icons[label] || '●'}
       </Text>
-      <Text style={[styles.tabLabel, { color: focused ? color : COLORS.muted }]}>{label}</Text>
+      <Text
+        numberOfLines={1}
+        ellipsizeMode="clip"
+        style={[styles.tabLabel, { color: focused ? color : COLORS.muted }]}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
 
 function MainTabs() {
+  const insets = useSafeAreaInsets();
+  const bottomPad = Math.max(insets.bottom, 8);
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: {
+          ...styles.tabBar,
+          height: 56 + bottomPad,
+          paddingBottom: bottomPad,
+        },
         tabBarShowLabel: false,
+        tabBarItemStyle: { paddingVertical: 4 },
       }}
     >
       <Tab.Screen
@@ -73,11 +87,13 @@ function MainTabs() {
 
 export default function Navigation() {
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Main" component={MainTabs} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Main" component={MainTabs} />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }
 
@@ -86,13 +102,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderTopColor: COLORS.border,
     borderTopWidth: 1,
-    height: 64,
-    paddingBottom: 8,
   },
   tabIcon: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 6,
+    minWidth: 80,
   },
   tabIconText: {
     fontSize: 18,
@@ -100,9 +115,10 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 9,
-    fontWeight: '600',
-    letterSpacing: 1,
+    fontWeight: '700',
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
     marginTop: 2,
+    includeFontPadding: false,
   },
 });
