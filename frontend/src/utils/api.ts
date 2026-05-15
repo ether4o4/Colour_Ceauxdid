@@ -299,7 +299,7 @@ export async function streamAgentResponse(
   };
 
   // Build a single attempt for one specific provider/model/key
-  const attempt = async (p: 'openrouter' | 'ollama', m: string, kId?: string): Promise<{ ok: boolean; error?: string; was404?: boolean }> => {
+  const attempt = async (p: 'openrouter' | 'ollama', m: string, kId?: string): Promise<{ ok: boolean; error?: string; was404?: boolean; was429?: boolean }> => {
     const k = await pickKeyForAgent(p, kId);
     if (!k) return { ok: false, error: 'no-key' };
     const secret = await resolveApiKeySecret(k);
@@ -326,7 +326,8 @@ export async function streamAgentResponse(
 
     if (caughtErr) {
       const is404 = /\b404\b|no endpoints found/i.test(caughtErr);
-      return { ok: false, error: caughtErr, was404: is404 };
+      const is429 = /\b429\b|rate.?limit|rate-limited/i.test(caughtErr);
+      return { ok: false, error: caughtErr, was404: is404, was429: is429 };
     }
     if (chunks === 0) return { ok: false, error: 'empty response' };
     await wrappedDone(caughtUsage);
@@ -338,7 +339,9 @@ export async function streamAgentResponse(
   if (primary.ok) return;
 
   // ── Fallback strategy ──
-  // 1. If model 404'd on OpenRouter, retry with the known-good free default.
+  // 1. If model 404'd or got 429'd on OpenRouter, walk a list of currently
+  //    active free models. Free models share an upstream pool; 429s on one
+  //    don't mean 429s on another.
   // 2. If Ollama failed (unreachable / bad model), fall back to OpenRouter.
   // 3. If no-key, surface the friendly error immediately.
   if (primary.error === 'no-key') {
@@ -354,17 +357,26 @@ export async function streamAgentResponse(
     return;
   }
 
-  // Retry #1: model deprecated on OpenRouter → swap to known-good free default
-  if (provider === 'openrouter' && primary.was404) {
-    const FALLBACK_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
-    if (model !== FALLBACK_MODEL) {
-      const retry = await attempt('openrouter', FALLBACK_MODEL, keyId);
+  // Retry: model 404'd (deprecated) or 429'd (shared free pool saturated).
+  // Walk a curated chain of currently-active free OpenRouter models, smallest
+  // and least-contested first (3B → 7B → 8B → larger).
+  if (provider === 'openrouter' && (primary.was404 || primary.was429)) {
+    const FALLBACK_CHAIN = [
+      'meta-llama/llama-3.2-3b-instruct:free',
+      'meta-llama/llama-3.2-1b-instruct:free',
+      'qwen/qwen-2.5-7b-instruct:free',
+      'mistralai/mistral-7b-instruct:free',
+      'google/gemma-2-9b-it:free',
+      'meta-llama/llama-3.1-8b-instruct:free',
+      'meta-llama/llama-3.3-70b-instruct:free',
+    ];
+    for (const fallbackModel of FALLBACK_CHAIN) {
+      if (fallbackModel === model) continue;
+      const retry = await attempt('openrouter', fallbackModel, keyId);
       if (retry.ok) return;
-    }
-    const FALLBACK_MODEL_2 = 'deepseek/deepseek-chat-v3.1:free';
-    if (model !== FALLBACK_MODEL_2) {
-      const retry2 = await attempt('openrouter', FALLBACK_MODEL_2, keyId);
-      if (retry2.ok) return;
+      // If THIS fallback also 404'd or 429'd, keep walking; for any other
+      // error (bad key, network, etc) surface the primary error and stop.
+      if (!retry.was404 && !retry.was429) break;
     }
   }
 
