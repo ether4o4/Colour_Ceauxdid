@@ -70,6 +70,7 @@ export default function SettingsScreen() {
 
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [dynModels, setDynModels] = useState<string[]>([]);
+  const [modelSearch, setModelSearch] = useState('');
 
   const [showWorkflowModal, setShowWorkflowModal] = useState(false);
   const [wfName, setWfName] = useState('');
@@ -574,31 +575,55 @@ export default function SettingsScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>SELECT MODEL</Text>
-            <ScrollView style={{ maxHeight: 420 }}>
-              <Text style={styles.fieldLabel}>POPULAR</Text>
-              {QUICK_MODELS.map(m => (
-                <TouchableOpacity key={m.id}
-                  style={[styles.modelOption, providerSettings.defaultModel === m.id && styles.modelOptionActive]}
-                  onPress={() => pickModel(m.id)}>
-                  <Text style={styles.modelOptionLabel}>{m.label}</Text>
-                  <Text style={styles.modelOptionId}>{m.id}</Text>
-                </TouchableOpacity>
-              ))}
-              {dynModels.length > 0 && (
+            <TextInput
+              style={styles.input}
+              placeholder="Search models (e.g. 'llama', ':free', 'claude')"
+              placeholderTextColor={COLORS.muted}
+              value={modelSearch}
+              onChangeText={setModelSearch}
+              autoCorrect={false}
+              autoCapitalize="none"
+            />
+            <ScrollView style={{ maxHeight: 420 }} keyboardShouldPersistTaps="handled">
+              {modelSearch.trim() === '' && (
                 <>
-                  <Text style={[styles.fieldLabel, { marginTop: 12 }]}>ALL ({dynModels.length}) — LIVE FROM OPENROUTER</Text>
-                  {dynModels.slice(0, 60).map(m => (
-                    <TouchableOpacity key={m}
-                      style={[styles.modelOptionCompact, providerSettings.defaultModel === m && styles.modelOptionActive]}
-                      onPress={() => pickModel(m)}>
-                      <Text style={styles.modelOptionId}>{m}</Text>
+                  <Text style={styles.fieldLabel}>POPULAR</Text>
+                  {QUICK_MODELS.map(m => (
+                    <TouchableOpacity key={m.id}
+                      style={[styles.modelOption, providerSettings.defaultModel === m.id && styles.modelOptionActive]}
+                      onPress={() => pickModel(m.id)}>
+                      <Text style={styles.modelOptionLabel}>{m.label}</Text>
+                      <Text style={styles.modelOptionId}>{m.id}</Text>
                     </TouchableOpacity>
                   ))}
-                  {dynModels.length > 60 && <Text style={styles.emptyText}>…+{dynModels.length - 60} more</Text>}
                 </>
               )}
+              {dynModels.length > 0 && (() => {
+                const q = modelSearch.trim().toLowerCase();
+                const filtered = q ? dynModels.filter(m => m.toLowerCase().includes(q)) : dynModels;
+                // Free models first when not searching
+                const sorted = q ? filtered : [
+                  ...filtered.filter(m => m.endsWith(':free')),
+                  ...filtered.filter(m => !m.endsWith(':free')),
+                ];
+                return (
+                  <>
+                    <Text style={[styles.fieldLabel, { marginTop: q ? 0 : 12 }]}>
+                      {q ? `MATCHES (${filtered.length} / ${dynModels.length})` : `ALL (${dynModels.length}) — LIVE FROM OPENROUTER`}
+                    </Text>
+                    {sorted.length === 0 && <Text style={styles.emptyText}>No models match "{modelSearch}"</Text>}
+                    {sorted.map(m => (
+                      <TouchableOpacity key={m}
+                        style={[styles.modelOptionCompact, providerSettings.defaultModel === m && styles.modelOptionActive]}
+                        onPress={() => pickModel(m)}>
+                        <Text style={styles.modelOptionId}>{m}{m.endsWith(':free') ? '  ·  FREE' : ''}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </>
+                );
+              })()}
             </ScrollView>
-            <TouchableOpacity style={[styles.modalButton, styles.primaryButton, { marginTop: 12 }]} onPress={() => setShowModelPicker(false)}>
+            <TouchableOpacity style={[styles.modalButton, styles.primaryButton, { marginTop: 12 }]} onPress={() => { setModelSearch(''); setShowModelPicker(false); }}>
               <Text style={styles.primaryButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
