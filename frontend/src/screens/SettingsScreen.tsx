@@ -557,8 +557,8 @@ export default function SettingsScreen() {
               </Text>
             </ScrollView>
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={[styles.modalButton, styles.secondaryButton]} onPress={() => setShowAddKey(false)}>
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              <TouchableOpacity style={[styles.modalButton, styles.secondaryBtn]} onPress={() => setShowAddKey(false)}>
+                <Text style={styles.secondaryBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalButton, styles.primaryButton]}
                 onPress={handleSaveNewKey} disabled={testing} testID="save-api-key-button">
@@ -661,8 +661,8 @@ export default function SettingsScreen() {
               {wfError ? <Text style={styles.inlineError}>{wfError}</Text> : null}
             </ScrollView>
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={[styles.modalButton, styles.secondaryButton]} onPress={() => setShowWorkflowModal(false)}>
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              <TouchableOpacity style={[styles.modalButton, styles.secondaryBtn]} onPress={() => setShowWorkflowModal(false)}>
+                <Text style={styles.secondaryBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalButton, styles.primaryButton]} onPress={saveWf}>
                 <Text style={styles.primaryButtonText}>Save Workflow</Text>
@@ -711,8 +711,8 @@ export default function SettingsScreen() {
               </Text>
             </ScrollView>
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={[styles.modalButton, styles.secondaryButton]} onPress={() => setShowAddAsset(false)}>
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              <TouchableOpacity style={[styles.modalButton, styles.secondaryBtn]} onPress={() => setShowAddAsset(false)}>
+                <Text style={styles.secondaryBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalButton, styles.primaryButton]}
                 onPress={saveAsset} disabled={assetTesting}>
@@ -790,8 +790,8 @@ export default function SettingsScreen() {
             {importError ? <Text style={styles.inlineError}>{importError}</Text> : null}
             {importSuccess ? <Text style={styles.inlineSuccess}>{importSuccess}</Text> : null}
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={[styles.modalButton, styles.secondaryButton]} onPress={() => setShowImport(false)}>
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              <TouchableOpacity style={[styles.modalButton, styles.secondaryBtn]} onPress={() => setShowImport(false)}>
+                <Text style={styles.secondaryBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalButton, styles.primaryButton]} onPress={handleImportSubmit}>
                 <Text style={styles.primaryButtonText}>Import</Text>
