@@ -4,6 +4,12 @@
     "slug": "colour-ceauxdid",
     "version": "2.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0a0a0f",
     "ios": {
@@ -12,10 +18,14 @@
     },
     "android": {
       "package": "com.ceauxdid.colour",
-      "permissions": ["INTERNET"]
+      "permissions": ["INTERNET"],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0a0a0f"
+      }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/icon.png"
     },
     "plugins": [
       "expo-font",
