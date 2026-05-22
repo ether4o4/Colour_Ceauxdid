@@ -61,9 +61,11 @@ async function resolveAgentProviderAndModel(agent: SwarmAgent) {
     model = model || mine.preferredModel;
     keyId = keyId || mine.preferredKeyId;
   }
-  provider = provider || settings.defaultProvider;
-  model = model || (provider === 'ollama' ? settings.ollamaModel : settings.defaultModel);
-  return { provider, model, keyId };
+  // 'elevenlabs' is a TTS-only provider — never a chat target. Coerce to openrouter.
+  const chatProvider: 'openrouter' | 'ollama' =
+    (provider || settings.defaultProvider) === 'ollama' ? 'ollama' : 'openrouter';
+  model = model || (chatProvider === 'ollama' ? settings.ollamaModel : settings.defaultModel);
+  return { provider: chatProvider, model, keyId };
 }
 
 // ────────── Prompt assembly ──────────

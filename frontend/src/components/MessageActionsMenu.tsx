@@ -7,6 +7,7 @@ import { SwarmAgent, SwarmMessage, PinnedMemory } from '../types';
 import { COLORS } from '../utils/theme';
 import { DEFAULT_AGENTS } from '../agents/config';
 import { addPinnedMemory } from '../store';
+import { speakMessage, stopSpeaking } from '../utils/tts';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -49,6 +50,17 @@ export default function MessageActionsMenu(props: Props) {
   async function handleCopy() {
     try { await Clipboard.setStringAsync(message!.text); } catch {}
     onClose();
+  }
+
+  async function handleSpeak() {
+    if (!senderAgent) return;
+    onClose();
+    stopSpeaking();
+    const res = await speakMessage(senderAgent, message!.text);
+    if (!res.ok && res.error) {
+      // surfaced via console; UI stays quiet to avoid a blocking alert
+      console.warn('TTS:', res.error);
+    }
   }
 
   async function handlePinSubmit() {
@@ -111,6 +123,16 @@ export default function MessageActionsMenu(props: Props) {
                 testID="action-pin"
                 onPress={() => setView('pin')}
               />
+              {message.isAgent && senderAgent && (
+                <ActionRow
+                  icon="🔊"
+                  label={`Speak in ${senderAgent.name}'s voice`}
+                  hint="Read this message aloud (needs an ElevenLabs key in Settings → Voice)"
+                  color={senderAgent.colorHex}
+                  testID="action-speak"
+                  onPress={handleSpeak}
+                />
+              )}
               <ActionRow
                 icon="⎘"
                 label="Copy"
