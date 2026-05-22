@@ -20,6 +20,7 @@ import {
 import {
   testOpenRouterKey, testOllamaEndpoint, listOpenRouterModels,
 } from '../utils/api';
+import { testElevenLabsKey } from '../utils/tts';
 import { testGitHubToken, testGoogleDriveToken, createExternalAsset } from '../utils/integrations';
 import { saveExternalAsset } from '../store';
 import { DEFAULT_AGENTS } from '../agents/config';
@@ -55,6 +56,7 @@ export default function SettingsScreen() {
     defaultProvider: 'openrouter',
     defaultModel: 'meta-llama/llama-3.1-8b-instruct:free',
     ollamaModel: 'llama3.3',
+    autoSpeak: false,
   });
   const [assets, setAssets] = useState<ExternalAsset[]>([]);
   const [usageTotals, setUsageTotals] = useState({ cost: 0, tokens: 0, entries: 0 });
@@ -70,6 +72,7 @@ export default function SettingsScreen() {
 
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [dynModels, setDynModels] = useState<string[]>([]);
+  const [modelSearch, setModelSearch] = useState('');
 
   const [showWorkflowModal, setShowWorkflowModal] = useState(false);
   const [wfName, setWfName] = useState('');
@@ -126,8 +129,8 @@ export default function SettingsScreen() {
   }
 
   // ── API Keys ──
-  function openAddKey() {
-    setNewKeyProvider('openrouter');
+  function openAddKey(provider: ApiProvider = 'openrouter') {
+    setNewKeyProvider(provider);
     setNewKeyLabel('');
     setNewKeySecret('');
     setNewKeyError('');
@@ -144,6 +147,8 @@ export default function SettingsScreen() {
     setNewKeyError('');
     const res = newKeyProvider === 'openrouter'
       ? await testOpenRouterKey(secret)
+      : newKeyProvider === 'elevenlabs'
+      ? await testElevenLabsKey(secret)
       : await testOllamaEndpoint(secret);
     if (!res.ok) {
       setNewKeyError(res.error || 'Validation failed');
@@ -153,7 +158,7 @@ export default function SettingsScreen() {
     const id = uuidv4();
     const key: ApiKey = {
       id, provider: newKeyProvider,
-      label: newKeyLabel.trim() || (newKeyProvider === 'openrouter' ? 'OpenRouter Key' : 'Ollama'),
+      label: newKeyLabel.trim() || (newKeyProvider === 'openrouter' ? 'OpenRouter Key' : newKeyProvider === 'elevenlabs' ? 'ElevenLabs Key' : 'Ollama'),
       secretKey: `apikey:${id}`,
       isActive: true, createdAt: Date.now(),
     };
@@ -285,6 +290,12 @@ export default function SettingsScreen() {
 
   const openrouterKeys = apiKeys.filter(k => k.provider === 'openrouter');
   const ollamaKeys = apiKeys.filter(k => k.provider === 'ollama');
+  const elevenKeys = apiKeys.filter(k => k.provider === 'elevenlabs');
+
+  async function toggleAutoSpeak(v: boolean) {
+    setProviderSettingsState(s => ({ ...s, autoSpeak: v }));
+    await updateProviderSettings({ autoSpeak: v });
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -365,8 +376,31 @@ export default function SettingsScreen() {
             <KeyRow key={k.id} k={k} preview={keyPreviews[k.id] || k.label} onToggle={() => toggleKeyActive(k)} onDelete={() => handleDeleteKey(k)} />
           ))}
 
-          <TouchableOpacity style={styles.addKeyBtn} onPress={openAddKey} testID="add-api-key-button">
+          <TouchableOpacity style={styles.addKeyBtn} onPress={() => openAddKey('openrouter')} testID="add-api-key-button">
             <Text style={styles.addKeyText}>+ ADD API KEY / ENDPOINT</Text>
+          </TouchableOpacity>
+        </Section>
+
+        {/* Voice / TTS */}
+        <Section title="VOICE (TEXT-TO-SPEECH)">
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.rowLabel}>Auto-speak replies</Text>
+              <Text style={styles.rowSub}>Read each agent's reply aloud in its own voice</Text>
+            </View>
+            <Switch value={providerSettings.autoSpeak} onValueChange={toggleAutoSpeak}
+              trackColor={{ false: COLORS.border, true: COLORS.purple }}
+              thumbColor={providerSettings.autoSpeak ? '#fff' : COLORS.muted} />
+          </View>
+          <Text style={styles.hintText}>
+            Powered by ElevenLabs. Each agent gets a distinct voice. Add multiple free keys to extend the monthly quota — they rotate automatically on rate limit. Tap any message → Speak to play it manually.
+          </Text>
+          <Text style={styles.keyListTitle}>ELEVENLABS KEYS ({elevenKeys.length})</Text>
+          {elevenKeys.length === 0 ? <Text style={styles.emptyText}>No voice keys yet</Text> : elevenKeys.map(k => (
+            <KeyRow key={k.id} k={k} preview={keyPreviews[k.id] || ''} onToggle={() => toggleKeyActive(k)} onDelete={() => handleDeleteKey(k)} />
+          ))}
+          <TouchableOpacity style={styles.addKeyBtn} onPress={() => openAddKey('elevenlabs')} testID="add-voice-key-button">
+            <Text style={styles.addKeyText}>+ ADD ELEVENLABS KEY</Text>
           </TouchableOpacity>
         </Section>
 
@@ -526,39 +560,41 @@ export default function SettingsScreen() {
             <ScrollView style={{ maxHeight: 460 }} keyboardShouldPersistTaps="handled">
               <Text style={styles.fieldLabel}>PROVIDER</Text>
               <View style={styles.providerPickRow}>
-                {(['openrouter', 'ollama'] as ApiProvider[]).map(p => (
+                {(['openrouter', 'ollama', 'elevenlabs'] as ApiProvider[]).map(p => (
                   <TouchableOpacity key={p} onPress={() => setNewKeyProvider(p)}
                     style={[styles.providerPick, newKeyProvider === p && styles.providerPickActive]}>
                     <Text style={[styles.providerPickText, newKeyProvider === p && { color: COLORS.text }]}>
-                      {p === 'openrouter' ? 'OpenRouter' : 'Ollama'}
+                      {p === 'openrouter' ? 'OpenRouter' : p === 'elevenlabs' ? 'ElevenLabs' : 'Ollama'}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
               <Text style={styles.fieldLabel}>LABEL (optional)</Text>
               <TextInput style={styles.input}
-                placeholder={newKeyProvider === 'openrouter' ? 'Personal OpenRouter…' : 'Home Ollama…'}
+                placeholder={newKeyProvider === 'openrouter' ? 'Personal OpenRouter…' : newKeyProvider === 'elevenlabs' ? 'My ElevenLabs…' : 'Home Ollama…'}
                 placeholderTextColor={COLORS.muted}
                 value={newKeyLabel} onChangeText={setNewKeyLabel} />
-              <Text style={styles.fieldLabel}>{newKeyProvider === 'openrouter' ? 'API KEY' : 'BASE URL'}</Text>
+              <Text style={styles.fieldLabel}>{newKeyProvider === 'ollama' ? 'BASE URL' : 'API KEY'}</Text>
               <TextInput style={styles.input}
-                placeholder={newKeyProvider === 'openrouter' ? 'sk-or-v1-…' : 'http://localhost:11434'}
+                placeholder={newKeyProvider === 'openrouter' ? 'sk-or-v1-…' : newKeyProvider === 'elevenlabs' ? 'sk_…' : 'http://localhost:11434'}
                 placeholderTextColor={COLORS.muted}
                 value={newKeySecret}
                 onChangeText={v => { setNewKeySecret(v); if (newKeyError) setNewKeyError(''); }}
                 autoCapitalize="none" autoCorrect={false}
-                secureTextEntry={newKeyProvider === 'openrouter'}
+                secureTextEntry={newKeyProvider !== 'ollama'}
                 testID="new-key-secret" />
               {newKeyError ? <Text style={styles.inlineError}>{newKeyError}</Text> : null}
               <Text style={styles.hintText}>
                 {newKeyProvider === 'openrouter'
                   ? 'Get a key at openrouter.ai/keys. Stored in device keychain — never leaves your device.'
+                  : newKeyProvider === 'elevenlabs'
+                  ? 'Free key at elevenlabs.io → Profile → API key (10k chars/mo free). Used only for voice.'
                   : 'Point to any reachable Ollama server. Pull models first with `ollama pull llama3.3`.'}
               </Text>
             </ScrollView>
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={[styles.modalButton, styles.secondaryButton]} onPress={() => setShowAddKey(false)}>
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              <TouchableOpacity style={[styles.modalButton, styles.secondaryBtn]} onPress={() => setShowAddKey(false)}>
+                <Text style={styles.secondaryBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalButton, styles.primaryButton]}
                 onPress={handleSaveNewKey} disabled={testing} testID="save-api-key-button">
@@ -574,31 +610,55 @@ export default function SettingsScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>SELECT MODEL</Text>
-            <ScrollView style={{ maxHeight: 420 }}>
-              <Text style={styles.fieldLabel}>POPULAR</Text>
-              {QUICK_MODELS.map(m => (
-                <TouchableOpacity key={m.id}
-                  style={[styles.modelOption, providerSettings.defaultModel === m.id && styles.modelOptionActive]}
-                  onPress={() => pickModel(m.id)}>
-                  <Text style={styles.modelOptionLabel}>{m.label}</Text>
-                  <Text style={styles.modelOptionId}>{m.id}</Text>
-                </TouchableOpacity>
-              ))}
-              {dynModels.length > 0 && (
+            <TextInput
+              style={styles.input}
+              placeholder="Search models (e.g. 'llama', ':free', 'claude')"
+              placeholderTextColor={COLORS.muted}
+              value={modelSearch}
+              onChangeText={setModelSearch}
+              autoCorrect={false}
+              autoCapitalize="none"
+            />
+            <ScrollView style={{ maxHeight: 420 }} keyboardShouldPersistTaps="handled">
+              {modelSearch.trim() === '' && (
                 <>
-                  <Text style={[styles.fieldLabel, { marginTop: 12 }]}>ALL ({dynModels.length}) — LIVE FROM OPENROUTER</Text>
-                  {dynModels.slice(0, 60).map(m => (
-                    <TouchableOpacity key={m}
-                      style={[styles.modelOptionCompact, providerSettings.defaultModel === m && styles.modelOptionActive]}
-                      onPress={() => pickModel(m)}>
-                      <Text style={styles.modelOptionId}>{m}</Text>
+                  <Text style={styles.fieldLabel}>POPULAR</Text>
+                  {QUICK_MODELS.map(m => (
+                    <TouchableOpacity key={m.id}
+                      style={[styles.modelOption, providerSettings.defaultModel === m.id && styles.modelOptionActive]}
+                      onPress={() => pickModel(m.id)}>
+                      <Text style={styles.modelOptionLabel}>{m.label}</Text>
+                      <Text style={styles.modelOptionId}>{m.id}</Text>
                     </TouchableOpacity>
                   ))}
-                  {dynModels.length > 60 && <Text style={styles.emptyText}>…+{dynModels.length - 60} more</Text>}
                 </>
               )}
+              {dynModels.length > 0 && (() => {
+                const q = modelSearch.trim().toLowerCase();
+                const filtered = q ? dynModels.filter(m => m.toLowerCase().includes(q)) : dynModels;
+                // Free models first when not searching
+                const sorted = q ? filtered : [
+                  ...filtered.filter(m => m.endsWith(':free')),
+                  ...filtered.filter(m => !m.endsWith(':free')),
+                ];
+                return (
+                  <>
+                    <Text style={[styles.fieldLabel, { marginTop: q ? 0 : 12 }]}>
+                      {q ? `MATCHES (${filtered.length} / ${dynModels.length})` : `ALL (${dynModels.length}) — LIVE FROM OPENROUTER`}
+                    </Text>
+                    {sorted.length === 0 && <Text style={styles.emptyText}>No models match "{modelSearch}"</Text>}
+                    {sorted.map(m => (
+                      <TouchableOpacity key={m}
+                        style={[styles.modelOptionCompact, providerSettings.defaultModel === m && styles.modelOptionActive]}
+                        onPress={() => pickModel(m)}>
+                        <Text style={styles.modelOptionId}>{m}{m.endsWith(':free') ? '  ·  FREE' : ''}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </>
+                );
+              })()}
             </ScrollView>
-            <TouchableOpacity style={[styles.modalButton, styles.primaryButton, { marginTop: 12 }]} onPress={() => setShowModelPicker(false)}>
+            <TouchableOpacity style={[styles.modalButton, styles.primaryButton, { marginTop: 12 }]} onPress={() => { setModelSearch(''); setShowModelPicker(false); }}>
               <Text style={styles.primaryButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
@@ -661,8 +721,8 @@ export default function SettingsScreen() {
               {wfError ? <Text style={styles.inlineError}>{wfError}</Text> : null}
             </ScrollView>
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={[styles.modalButton, styles.secondaryButton]} onPress={() => setShowWorkflowModal(false)}>
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              <TouchableOpacity style={[styles.modalButton, styles.secondaryBtn]} onPress={() => setShowWorkflowModal(false)}>
+                <Text style={styles.secondaryBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalButton, styles.primaryButton]} onPress={saveWf}>
                 <Text style={styles.primaryButtonText}>Save Workflow</Text>
@@ -711,8 +771,8 @@ export default function SettingsScreen() {
               </Text>
             </ScrollView>
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={[styles.modalButton, styles.secondaryButton]} onPress={() => setShowAddAsset(false)}>
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              <TouchableOpacity style={[styles.modalButton, styles.secondaryBtn]} onPress={() => setShowAddAsset(false)}>
+                <Text style={styles.secondaryBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalButton, styles.primaryButton]}
                 onPress={saveAsset} disabled={assetTesting}>
@@ -790,8 +850,8 @@ export default function SettingsScreen() {
             {importError ? <Text style={styles.inlineError}>{importError}</Text> : null}
             {importSuccess ? <Text style={styles.inlineSuccess}>{importSuccess}</Text> : null}
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={[styles.modalButton, styles.secondaryButton]} onPress={() => setShowImport(false)}>
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              <TouchableOpacity style={[styles.modalButton, styles.secondaryBtn]} onPress={() => setShowImport(false)}>
+                <Text style={styles.secondaryBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalButton, styles.primaryButton]} onPress={handleImportSubmit}>
                 <Text style={styles.primaryButtonText}>Import</Text>

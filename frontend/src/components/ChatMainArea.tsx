@@ -11,7 +11,9 @@ import {
   getMessages, saveMessage, updateMessage, deleteMessage,
   getCustomAgents, saveChatSession, getGroupMessagesForAgent,
   ChatScope, clearScope, scopeKey as toScopeKey, getUsageStats,
+  getProviderSettings,
 } from '../store';
+import { speakMessage } from '../utils/tts';
 import { streamAgentResponse } from '../utils/api';
 import { parseSlashCommand, extractAgentMentions, SLASH_COMMANDS_HELP } from '../utils/commands';
 import MessageBubble from './MessageBubble';
@@ -202,6 +204,14 @@ export default function ChatMainArea({
     const finalMsg: SwarmMessage = { ...agentMsg, text: fullResponse, usage: finalUsage };
     setMessages(prev => prev.map(m => m.id === msgId ? finalMsg : m));
     await updateMessage(finalMsg, scope);
+
+    // Auto-speak the reply in the agent's voice if enabled (and not an error).
+    if (!fullResponse.startsWith('⚠')) {
+      try {
+        const ps = await getProviderSettings();
+        if (ps.autoSpeak) speakMessage(agent, fullResponse).catch(() => {});
+      } catch {}
+    }
 
     // Refresh running cost footer
     try {

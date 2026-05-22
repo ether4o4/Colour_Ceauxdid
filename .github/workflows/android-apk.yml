@@ -1,0 +1,90 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - claude/fix-api-key-modal-styles
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install JS dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Expo prebuild (generate android/)
+        working-directory: frontend
+        run: npx expo prebuild --platform android --no-install --non-interactive
+
+      - name: Ensure release uses debug signing
+        working-directory: frontend/android
+        run: |
+          # Expo prebuild already wires release to signingConfigs.debug by default,
+          # but make sure debug.keystore exists at the expected location.
+          if [ ! -f app/debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore app/debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          echo "--- relevant snippet of app/build.gradle ---"
+          grep -nE "signingConfig|buildTypes|release" app/build.gradle | head -40
+
+      - name: Gradle assembleRelease (bundles JS into APK)
+        working-directory: frontend/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Locate + rename APK
+        run: |
+          # Release APK location can be apk/release/app-release.apk or split per-ABI.
+          SRC=$(find frontend/android/app/build/outputs/apk/release -name "*.apk" | head -1)
+          echo "Source APK: $SRC"
+          DST=colour-ceauxdid-${{ github.run_number }}-release.apk
+          cp "$SRC" "$DST"
+          echo "APK_PATH=$DST" >> $GITHUB_ENV
+          # Sanity: verify the JS bundle is embedded so the APK runs standalone.
+          unzip -l "$DST" | grep -E "assets/index.android.bundle" || (echo "❌ JS bundle missing from APK"; exit 1)
+          ls -lh "$DST"
+
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: colour-ceauxdid-apk
+          path: ${{ env.APK_PATH }}
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-build-${{ github.run_number }}
+          name: APK Build ${{ github.run_number }}
+          body: |
+            Standalone release APK from commit ${{ github.sha }}.
+            JS bundle is embedded — no Metro / dev server needed.
+
+            Install on phone:
+            1. Open this page on your phone
+            2. Tap the .apk asset below
+            3. Allow install-from-this-source if prompted
+          files: ${{ env.APK_PATH }}

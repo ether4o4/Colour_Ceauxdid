@@ -283,7 +283,8 @@ export async function setExternalAssetToken(secretKey: string, token: string): P
 }
 
 // ───────────────────── API keys (secure-store for secrets, AsyncStorage for metadata) ─────────────────────
-export type ApiProvider = 'openrouter' | 'ollama';
+// 'elevenlabs' keys are used only for text-to-speech, never for chat completion.
+export type ApiProvider = 'openrouter' | 'ollama' | 'elevenlabs';
 
 export interface ApiKey {
   id: string;
@@ -374,6 +375,7 @@ export interface ProviderSettings {
   defaultProvider: ApiProvider;
   defaultModel: string;
   ollamaModel: string;
+  autoSpeak: boolean;        // auto-play TTS for each new agent reply
 }
 
 // Current free/reliable OpenRouter default as of 2026. Updated from the
@@ -382,6 +384,7 @@ const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
   defaultProvider: 'openrouter',
   defaultModel: 'meta-llama/llama-3.3-70b-instruct:free',
   ollamaModel: 'llama3.3',
+  autoSpeak: false,
 };
 
 // Known-dead model IDs that should be auto-upgraded on load.
