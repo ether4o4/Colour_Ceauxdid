@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - claude/voice-reenable
   workflow_dispatch:
 
 permissions:
@@ -77,11 +78,14 @@ jobs:
           name: colour-ceauxdid-apk
           path: ${{ env.APK_STABLE }}
 
-      - name: Publish GitHub Release
+      # main → official release that powers the permanent "latest" link.
+      - name: Publish GitHub Release (main)
+        if: github.ref_name == 'main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-build-${{ github.run_number }}
           name: APK Build ${{ github.run_number }}
+          make_latest: true
           body: |
             Standalone release APK from commit ${{ github.sha }}.
             JS bundle is embedded — no Metro / dev server needed.
@@ -95,4 +99,21 @@ jobs:
             3. Allow install-from-this-source if prompted
           files: |
             ${{ env.APK_STABLE }}
+            ${{ env.APK_VERSIONED }}
+
+      # non-main → prerelease ONLY. make_latest:false so the permanent link
+      # stays on the last good main build while a test build is validated.
+      - name: Publish GitHub Release (test branch)
+        if: github.ref_name != 'main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-${{ github.ref_name }}-${{ github.run_number }}
+          name: TEST ${{ github.ref_name }} #${{ github.run_number }}
+          make_latest: false
+          prerelease: true
+          body: |
+            ⚠️ TEST BUILD from branch ${{ github.ref_name }} (commit ${{ github.sha }}).
+            Does NOT change the permanent download link — the stable app is unaffected.
+            Install this APK directly to test, then report back.
+          files: |
             ${{ env.APK_VERSIONED }}
