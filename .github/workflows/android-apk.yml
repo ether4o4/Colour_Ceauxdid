@@ -3,7 +3,6 @@ name: Build Android APK
 on:
   push:
     branches:
-      - claude/fix-api-key-modal-styles
       - main
   workflow_dispatch:
 
@@ -56,23 +55,27 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Locate + rename APK
+      - name: Locate + name APKs
         run: |
           # Release APK location can be apk/release/app-release.apk or split per-ABI.
           SRC=$(find frontend/android/app/build/outputs/apk/release -name "*.apk" | head -1)
           echo "Source APK: $SRC"
-          DST=colour-ceauxdid-${{ github.run_number }}-release.apk
-          cp "$SRC" "$DST"
-          echo "APK_PATH=$DST" >> $GITHUB_ENV
+          # Versioned copy (history) + stable copy (permanent "latest" download link).
+          VERSIONED=colour-ceauxdid-${{ github.run_number }}-release.apk
+          STABLE=colour-ceauxdid.apk
+          cp "$SRC" "$VERSIONED"
+          cp "$SRC" "$STABLE"
+          echo "APK_VERSIONED=$VERSIONED" >> $GITHUB_ENV
+          echo "APK_STABLE=$STABLE" >> $GITHUB_ENV
           # Sanity: verify the JS bundle is embedded so the APK runs standalone.
-          unzip -l "$DST" | grep -E "assets/index.android.bundle" || (echo "❌ JS bundle missing from APK"; exit 1)
-          ls -lh "$DST"
+          unzip -l "$STABLE" | grep -E "assets/index.android.bundle" || (echo "❌ JS bundle missing from APK"; exit 1)
+          ls -lh "$VERSIONED" "$STABLE"
 
       - name: Upload as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: colour-ceauxdid-apk
-          path: ${{ env.APK_PATH }}
+          path: ${{ env.APK_STABLE }}
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -83,8 +86,13 @@ jobs:
             Standalone release APK from commit ${{ github.sha }}.
             JS bundle is embedded — no Metro / dev server needed.
 
+            Permanent download link (always the newest build):
+            https://github.com/${{ github.repository }}/releases/latest/download/colour-ceauxdid.apk
+
             Install on phone:
             1. Open this page on your phone
             2. Tap the .apk asset below
             3. Allow install-from-this-source if prompted
-          files: ${{ env.APK_PATH }}
+          files: |
+            ${{ env.APK_STABLE }}
+            ${{ env.APK_VERSIONED }}
