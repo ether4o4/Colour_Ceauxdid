@@ -10,10 +10,14 @@
  *   expo-audio's imperative createAudioPlayer.
  */
 
-import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
-import * as FileSystem from 'expo-file-system/legacy';
 import { SwarmAgent } from '../types';
 import { getApiKeys, resolveApiKeySecret, markApiKeyUsed, ApiKey } from '../store';
+
+// NOTE: expo-audio and expo-file-system are loaded lazily (require) inside the
+// functions that use them — NOT at module top level. This module is imported by
+// ChatMainArea (the default tab), so a top-level native import that fails to
+// initialize would crash the whole app on launch. Lazy-loading confines any
+// audio-module problem to the Speak action itself.
 
 const ELEVEN_BASE = 'https://api.elevenlabs.io/v1';
 // Flash v2.5 is the cheapest/fastest model — best for stretching the free quota.
@@ -85,7 +89,7 @@ function bytesToB64(bytes: Uint8Array): string {
 }
 
 let _ttsKeyRr = 0;
-let _player: ReturnType<typeof createAudioPlayer> | null = null;
+let _player: any = null;
 
 async function activeElevenKeys(): Promise<ApiKey[]> {
   return (await getApiKeys('elevenlabs')).filter(k => k.isActive);
@@ -138,6 +142,10 @@ async function synthAndPlay(
         : `ElevenLabs ${resp.status}`;
       return { ok: false, error: friendly, rotate };
     }
+
+    // Lazy-load native modules only now (never at app launch).
+    const FileSystem = require('expo-file-system/legacy');
+    const { createAudioPlayer, setAudioModeAsync } = require('expo-audio');
 
     const buf = await resp.arrayBuffer();
     const b64 = bytesToB64(new Uint8Array(buf));
