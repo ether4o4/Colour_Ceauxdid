@@ -21,6 +21,10 @@ import {
   testOpenRouterKey, testOllamaEndpoint, listOpenRouterModels,
 } from '../utils/api';
 import { testElevenLabsKey } from '../utils/tts';
+import {
+  isTelegramEnabled, setTelegramEnabled, getTelegramToken, setTelegramToken,
+  testTelegramToken, getTelegramAgentId, setTelegramAgentId,
+} from '../utils/telegram';
 import { testGitHubToken, testGoogleDriveToken, createExternalAsset } from '../utils/integrations';
 import { saveExternalAsset } from '../store';
 import { DEFAULT_AGENTS } from '../agents/config';
@@ -48,6 +52,13 @@ const MS_30_DAYS = 30 * 24 * 60 * 60 * 1000;
 
 export default function SettingsScreen() {
   const [silentMode, setSilentMode] = useState(false);
+  const [tgEnabled, setTgEnabled] = useState(false);
+  const [tgToken, setTgToken] = useState('');
+  const [tgSavedToken, setTgSavedToken] = useState(false);
+  const [tgTesting, setTgTesting] = useState(false);
+  const [tgError, setTgError] = useState('');
+  const [tgUsername, setTgUsername] = useState('');
+  const [tgAgentId, setTgAgentId] = useState('blue');
   const [focusedAgents, setFocusedAgents] = useState<string[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
@@ -113,6 +124,14 @@ export default function SettingsScreen() {
     const prevs: Record<string, string> = {};
     for (const k of keys) prevs[k.id] = await getApiKeyPreview(k);
     setKeyPreviews(prevs);
+
+    // Telegram relay state
+    const [tgOn, tgTok, tgAg] = await Promise.all([
+      isTelegramEnabled(), getTelegramToken(), getTelegramAgentId(),
+    ]);
+    setTgEnabled(tgOn);
+    setTgSavedToken(!!tgTok);
+    setTgAgentId(tgAg);
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -120,6 +139,31 @@ export default function SettingsScreen() {
   async function toggleSilentMode(val: boolean) {
     setSilentMode(val);
     await updateSettings({ silentMode: val });
+  }
+
+  async function handleSaveTelegramToken() {
+    const tok = tgToken.trim();
+    if (!tok) { setTgError('Paste your bot token (from @BotFather).'); return; }
+    setTgTesting(true);
+    setTgError('');
+    const res = await testTelegramToken(tok);
+    if (!res.ok) { setTgError(res.error || 'Invalid token'); setTgTesting(false); return; }
+    await setTelegramToken(tok);
+    setTgSavedToken(true);
+    setTgUsername(res.username || '');
+    setTgToken('');
+    setTgTesting(false);
+  }
+
+  async function toggleTelegram(val: boolean) {
+    if (val && !tgSavedToken) { setTgError('Save a bot token first.'); return; }
+    setTgEnabled(val);
+    await setTelegramEnabled(val);
+  }
+
+  async function pickTelegramAgent(id: string) {
+    setTgAgentId(id);
+    await setTelegramAgentId(id);
   }
 
   async function toggleFocusAgent(id: string) {
@@ -402,6 +446,56 @@ export default function SettingsScreen() {
           <TouchableOpacity style={styles.addKeyBtn} onPress={() => openAddKey('elevenlabs')} testID="add-voice-key-button">
             <Text style={styles.addKeyText}>+ ADD ELEVENLABS KEY</Text>
           </TouchableOpacity>
+        </Section>
+
+        {/* Telegram relay */}
+        <Section title="TELEGRAM RELAY">
+          <Text style={styles.hintText}>
+            Answer Telegram messages with your agents — using the same provider as chat (set the default to Ollama for local, OpenRouter for a big model, or pin the relay agent below). Works only while this app is open and on screen (a phone app can't run a 24/7 bot; use Termux for always-on).
+          </Text>
+
+          <Text style={styles.keyListTitle}>BOT TOKEN</Text>
+          {tgSavedToken ? (
+            <Text style={styles.hintText}>
+              ✓ Token saved{tgUsername ? ` (@${tgUsername})` : ''}. Paste a new one below to replace it.
+            </Text>
+          ) : (
+            <Text style={styles.hintText}>Create a bot with @BotFather on Telegram, copy the token (123456:ABC…).</Text>
+          )}
+          <TextInput style={styles.input}
+            placeholder="123456789:ABCdef…"
+            placeholderTextColor={COLORS.muted}
+            value={tgToken}
+            onChangeText={v => { setTgToken(v); if (tgError) setTgError(''); }}
+            autoCapitalize="none" autoCorrect={false} secureTextEntry />
+          {tgError ? <Text style={styles.inlineError}>{tgError}</Text> : null}
+          <TouchableOpacity style={[styles.secondaryBtn, { marginTop: 8 }]} onPress={handleSaveTelegramToken} disabled={tgTesting}>
+            {tgTesting ? <ActivityIndicator color={COLORS.text} /> : <Text style={styles.secondaryBtnText}>TEST & SAVE TOKEN</Text>}
+          </TouchableOpacity>
+
+          <Text style={[styles.keyListTitle, { marginTop: 14 }]}>RELAY AGENT</Text>
+          <View style={styles.chipRow}>
+            {DEFAULT_AGENTS.map(agent => {
+              const sel = tgAgentId === agent.id;
+              return (
+                <TouchableOpacity key={agent.id}
+                  style={[styles.chip, { borderColor: sel ? agent.colorHex : COLORS.border }]}
+                  onPress={() => pickTelegramAgent(agent.id)}>
+                  <Text style={[styles.chipText, { color: sel ? agent.colorHex : COLORS.muted }]}>{agent.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={[styles.row, { marginTop: 12 }]}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.rowLabel}>Enable relay (app must stay open)</Text>
+              <Text style={styles.rowSub}>{tgEnabled ? 'Listening while this screen is open' : 'Off'}</Text>
+            </View>
+            <Switch value={tgEnabled} onValueChange={toggleTelegram}
+              trackColor={{ false: COLORS.border, true: COLORS.purple }}
+              thumbColor={tgEnabled ? '#fff' : COLORS.muted} />
+          </View>
         </Section>
 
         {/* Per-agent model/key pinning */}
