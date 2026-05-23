@@ -100,68 +100,25 @@ export async function isTtsConfigured(): Promise<boolean> {
 }
 
 export function stopSpeaking(): void {
-  if (_player) {
-    try { _player.pause(); } catch {}
-    try { _player.remove(); } catch {}
-    _player = null;
-  }
+  // No-op: audio playback is disabled in this build (see synthAndPlay).
+  _player = null;
 }
 
+// Audio playback is temporarily disabled. expo-audio / expo-file-system were
+// pulled to fix an instant-launch native crash — they were the only native
+// modules added since the last known-good build. The ElevenLabs key,
+// per-agent voice mapping, round-robin, and UI all remain wired so playback
+// can be re-enabled in one place once a non-crashing audio path is in.
 async function synthAndPlay(
-  secret: string,
-  voiceId: string,
-  text: string,
+  _secret: string,
+  _voiceId: string,
+  _text: string,
 ): Promise<{ ok: boolean; error?: string; rotate?: boolean }> {
-  try {
-    const resp = await fetch(
-      `${ELEVEN_BASE}/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
-      {
-        method: 'POST',
-        headers: {
-          'xi-api-key': secret,
-          'Content-Type': 'application/json',
-          Accept: 'audio/mpeg',
-        },
-        body: JSON.stringify({
-          text,
-          model_id: TTS_MODEL,
-          voice_settings: { stability: 0.5, similarity_boost: 0.8 },
-        }),
-      },
-    );
-
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      const rotate =
-        resp.status === 401 || resp.status === 429 ||
-        /quota|limit|exceeded/i.test(body);
-      const friendly =
-        resp.status === 401 ? 'Invalid ElevenLabs key.'
-        : resp.status === 429 ? 'ElevenLabs rate limit / quota hit.'
-        : /quota|exceeded/i.test(body) ? 'ElevenLabs monthly quota exhausted.'
-        : `ElevenLabs ${resp.status}`;
-      return { ok: false, error: friendly, rotate };
-    }
-
-    // Lazy-load native modules only now (never at app launch).
-    const FileSystem = require('expo-file-system/legacy');
-    const { createAudioPlayer, setAudioModeAsync } = require('expo-audio');
-
-    const buf = await resp.arrayBuffer();
-    const b64 = bytesToB64(new Uint8Array(buf));
-    const path = `${FileSystem.cacheDirectory}tts-${Date.now()}.mp3`;
-    await FileSystem.writeAsStringAsync(path, b64, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
-    try { await setAudioModeAsync({ playsInSilentMode: true }); } catch {}
-    stopSpeaking();
-    _player = createAudioPlayer({ uri: path });
-    _player.play();
-    return { ok: true };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || 'TTS network error', rotate: false };
-  }
+  return {
+    ok: false,
+    error: 'Voice playback is temporarily off in this build (audio module removed to fix the launch crash). Coming back soon.',
+    rotate: false,
+  };
 }
 
 /**
