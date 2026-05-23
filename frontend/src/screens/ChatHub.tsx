@@ -13,6 +13,7 @@ import {
 } from '../store';
 import SidebarNavigation from '../components/SidebarNavigation';
 import ChatMainArea from '../components/ChatMainArea';
+import { syncRelay } from '../utils/telegram';
 import { v4 as uuidv4 } from 'uuid';
 
 export default function ChatHub() {
@@ -72,6 +73,9 @@ export default function ChatHub() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Resume the foreground Telegram relay if it was left enabled.
+  useEffect(() => { syncRelay().catch(() => {}); }, []);
 
   async function handleSelectProject(projectId: string) {
     setActiveSection('project');
