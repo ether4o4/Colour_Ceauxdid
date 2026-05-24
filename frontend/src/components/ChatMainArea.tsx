@@ -49,6 +49,7 @@ export default function ChatMainArea({
   const [chatCost, setChatCost] = useState<{ cost: number; tokens: number }>({ cost: 0, tokens: 0 });
   const [actionMsg, setActionMsg] = useState<SwarmMessage | null>(null);
   const [showSlashHelp, setShowSlashHelp] = useState(false);
+  const [voiceNote, setVoiceNote] = useState('');
   const flatListRef = useRef<FlatList>(null);
 
   const scope: ChatScope | null =
@@ -209,7 +210,11 @@ export default function ChatMainArea({
     if (!fullResponse.startsWith('⚠')) {
       try {
         const ps = await getProviderSettings();
-        if (ps.autoSpeak) speakMessage(agent, fullResponse).catch(() => {});
+        if (ps.autoSpeak) {
+          speakMessage(agent, fullResponse)
+            .then(r => { setVoiceNote(r.ok ? '' : `🔊 ${r.error || 'voice failed'}`); })
+            .catch(e => setVoiceNote(`🔊 ${e?.message || 'voice failed'}`));
+        }
       } catch {}
     }
 
@@ -388,6 +393,12 @@ export default function ChatMainArea({
         }
       />
 
+      {voiceNote ? (
+        <TouchableOpacity onPress={() => setVoiceNote('')} style={styles.voiceNote}>
+          <Text style={styles.voiceNoteText}>{voiceNote}  (tap to dismiss)</Text>
+        </TouchableOpacity>
+      ) : null}
+
       {mode !== 'saved' && (
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -485,12 +496,18 @@ export default function ChatMainArea({
         onAskAnother={handleAskAnother}
         onDelete={handleDeleteMessage}
         onMemoryPinned={() => {}}
+        onSpeakResult={(note) => setVoiceNote(note)}
       />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  voiceNote: {
+    marginHorizontal: 12, marginBottom: 6, paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: '#2a1a1a', borderWidth: 1, borderColor: COLORS.red, borderRadius: 8,
+  },
+  voiceNoteText: { color: '#ffb3b3', fontSize: 12 },
   container: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',

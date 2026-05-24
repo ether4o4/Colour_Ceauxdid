@@ -24,12 +24,14 @@ interface Props {
   onAskAnother: (agentId: string, sourceMessage: SwarmMessage) => void;
   onDelete: (message: SwarmMessage) => void;
   onMemoryPinned?: () => void;
+  onSpeakResult?: (note: string) => void;
 }
 
 export default function MessageActionsMenu(props: Props) {
   const {
     visible, message, mode, customAgents, projectAgents = [], currentAgentId,
     currentScopeKey, onClose, onContinueInDm, onAskAnother, onDelete, onMemoryPinned,
+    onSpeakResult,
   } = props;
 
   const [view, setView] = useState<'main' | 'dm' | 'ask' | 'pin'>('main');
@@ -57,10 +59,7 @@ export default function MessageActionsMenu(props: Props) {
     onClose();
     stopSpeaking();
     const res = await speakMessage(senderAgent, message!.text);
-    if (!res.ok && res.error) {
-      // surfaced via console; UI stays quiet to avoid a blocking alert
-      console.warn('TTS:', res.error);
-    }
+    onSpeakResult?.(res.ok ? '' : `🔊 ${res.error || 'voice failed'}`);
   }
 
   async function handlePinSubmit() {
