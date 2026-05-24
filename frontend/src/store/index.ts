@@ -396,6 +396,7 @@ const DEAD_MODEL_IDS = new Set([
   'meta-llama/llama-3.2-3b-instruct:free',
   'google/gemini-2.0-flash-exp:free',
   'google/gemma-2-9b-it:free',
+  'deepseek/deepseek-chat-v3.1:free',
 ]);
 
 export async function getProviderSettings(): Promise<ProviderSettings> {
