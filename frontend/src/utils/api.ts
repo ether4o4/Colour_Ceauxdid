@@ -386,26 +386,45 @@ export async function streamAgentResponse(
   }
 
   // Retry: model 404'd (deprecated) or 429'd (shared free pool saturated).
-  // Walk a curated chain of currently-active free OpenRouter models, smallest
-  // and least-contested first (3B → 7B → 8B → larger).
+  // Free models on OpenRouter churn constantly, so a hardcoded list rots. Fetch
+  // the LIVE free-model catalog and walk it, smallest/most-reliable families
+  // first. Backstop with a short hardcoded list only if the fetch fails.
   if (provider === 'openrouter' && (primary.was404 || primary.was429)) {
-    const FALLBACK_CHAIN = [
-      'meta-llama/llama-3.2-3b-instruct:free',
-      'meta-llama/llama-3.2-1b-instruct:free',
-      'qwen/qwen-2.5-7b-instruct:free',
-      'mistralai/mistral-7b-instruct:free',
-      'google/gemma-2-9b-it:free',
-      'meta-llama/llama-3.1-8b-instruct:free',
-      'meta-llama/llama-3.3-70b-instruct:free',
-    ];
-    for (const fallbackModel of FALLBACK_CHAIN) {
+    let chain: string[] = [];
+    try {
+      const orKeys = await keysForProvider('openrouter');
+      const secret = orKeys.length ? await resolveApiKeySecret(orKeys[0]) : undefined;
+      const live = (await listOpenRouterModels(secret))
+        .map(m => m.id)
+        .filter(id => id.endsWith(':free'));
+      const rank = (id: string) => {
+        const s = id.toLowerCase();
+        if (s.includes('llama-3.2-1b') || s.includes('llama-3.2-3b')) return 0;
+        if (s.includes('qwen') || s.includes('llama-3.1-8b')) return 1;
+        if (s.includes('mistral') || s.includes('gemma')) return 2;
+        if (s.includes('llama-3.3-70b') || s.includes('deepseek')) return 3;
+        return 4;
+      };
+      chain = live.sort((a, b) => rank(a) - rank(b));
+    } catch {}
+    if (chain.length === 0) {
+      chain = [
+        'meta-llama/llama-3.3-70b-instruct:free',
+        'qwen/qwen-2.5-7b-instruct:free',
+      ];
+    }
+    let tried = 0;
+    for (const fallbackModel of chain) {
       if (fallbackModel === model) continue;
       const retry = await attempt('openrouter', fallbackModel, keyId);
       if (retry.ok) return;
-      // If THIS fallback also 404'd or 429'd, keep walking; for any other
-      // error (bad key, network, etc) surface the primary error and stop.
+      // Keep walking only on 404/429; any other error (bad key, network) stops.
       if (!retry.was404 && !retry.was429) break;
+      if (++tried >= 6) break; // cap attempts to keep latency sane
     }
+    // Every free model we tried was unavailable.
+    onError('All free models are busy or unavailable right now. Switch the model in Settings → Default Model, or add a little OpenRouter credit and pick a paid model (far more reliable than the free pool).');
+    return;
   }
 
   // Retry #2: Local Ollama failed → fall back to OpenRouter if any active key exists
