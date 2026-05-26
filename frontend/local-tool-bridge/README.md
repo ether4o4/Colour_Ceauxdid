@@ -21,6 +21,18 @@ export RED_TOOL_ROOT=$HOME
 node local-tool-bridge/server.mjs
 ```
 
+To let the Expo app call this bridge, build/run the app with matching public
+bridge config:
+
+```sh
+export EXPO_PUBLIC_RED_TOOL_ENABLED=true
+export EXPO_PUBLIC_RED_TOOL_BASE_URL=http://127.0.0.1:8787
+export EXPO_PUBLIC_RED_TOOL_TOKEN="$RED_TOOL_TOKEN"
+```
+
+Use a private random token instead of the example placeholder if the bridge is
+reachable from anything besides your own phone.
+
 ## ElevenLabs TTS on Termux
 
 Put your key in `.env`:

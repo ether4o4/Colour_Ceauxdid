@@ -12,6 +12,8 @@
 
 import { SwarmAgent } from '../types';
 import { getApiKeys, resolveApiKeySecret, markApiKeyUsed, ApiKey } from '../store';
+import { RED_TOOL_BRIDGE } from '../config/redToolBridge';
+import { speakWithElevenLabs } from './redToolBridge';
 
 // NOTE: expo-audio and expo-file-system are loaded lazily (require) inside the
 // functions that use them — NOT at module top level. This module is imported by
@@ -91,6 +93,10 @@ function bytesToB64(bytes: Uint8Array): string {
 let _ttsKeyRr = 0;
 let _player: any = null;
 
+function wait(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function activeElevenKeys(): Promise<ApiKey[]> {
   return (await getApiKeys('elevenlabs')).filter(k => k.isActive);
 }
@@ -105,6 +111,48 @@ export function stopSpeaking(): void {
     try { _player.remove(); } catch {}
     _player = null;
   }
+}
+
+async function waitForAudioReady(player: any, timeoutMs = 3500): Promise<boolean> {
+  if (player?.isLoaded) return true;
+
+  let removeListener: (() => void) | undefined;
+  const statusReady = new Promise<boolean>((resolve) => {
+    try {
+      const sub = player?.addListener?.('playbackStatusUpdate', (status: any) => {
+        if (status?.isLoaded) resolve(true);
+        if (status?.error) resolve(false);
+      });
+      removeListener = () => sub?.remove?.();
+    } catch {
+      resolve(false);
+    }
+  });
+
+  const pollReady = (async () => {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      if (player?.isLoaded) return true;
+      await wait(75);
+    }
+    return false;
+  })();
+
+  const timeout = wait(timeoutMs).then(() => false);
+  const ready = await Promise.race([statusReady, pollReady, timeout]);
+  removeListener?.();
+  return !!ready || !!player?.isLoaded;
+}
+
+async function speakViaTermuxBridge(
+  text: string,
+  voiceId?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!RED_TOOL_BRIDGE.enabled) {
+    return { ok: false, error: 'Termux TTS bridge is not enabled.' };
+  }
+  const res = await speakWithElevenLabs(text, { voiceId, play: true });
+  return res.ok ? { ok: true } : { ok: false, error: res.output };
 }
 
 async function synthAndPlay(
@@ -156,7 +204,11 @@ async function synthAndPlay(
 
     try { await setAudioModeAsync({ playsInSilentMode: true }); } catch {}
     stopSpeaking();
-    _player = createAudioPlayer({ uri: path });
+    _player = createAudioPlayer({ uri: path }, { updateInterval: 100, downloadFirst: true });
+    const ready = await waitForAudioReady(_player);
+    if (!ready) {
+      return { ok: false, error: 'Audio file saved, but player did not finish loading.', rotate: false };
+    }
     _player.play();
     return { ok: true };
   } catch (e: any) {
@@ -172,13 +224,17 @@ export async function speakMessage(
   agent: SwarmAgent,
   text: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const keys = await activeElevenKeys();
-  if (keys.length === 0) return { ok: false, error: 'No ElevenLabs key. Add one in Settings → Voice.' };
-
   const clean = sanitizeForSpeech(text);
   if (!clean) return { ok: true };
 
   const voiceId = voiceForAgent(agent);
+  const keys = await activeElevenKeys();
+  if (keys.length === 0) {
+    const bridge = await speakViaTermuxBridge(clean, voiceId);
+    if (bridge.ok) return bridge;
+    return { ok: false, error: 'No ElevenLabs key. Add one in Settings → Voice, or enable the Termux TTS bridge.' };
+  }
+
   const n = keys.length;
   const start = _ttsKeyRr % n;
   _ttsKeyRr = (_ttsKeyRr + 1) % n;
@@ -197,6 +253,8 @@ export async function speakMessage(
     lastErr = res.error || lastErr;
     if (!res.rotate) break; // non-quota error → stop trying other keys
   }
+  const bridge = await speakViaTermuxBridge(clean, voiceId);
+  if (bridge.ok) return bridge;
   return { ok: false, error: lastErr };
 }
 
