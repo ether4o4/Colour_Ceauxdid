@@ -54,18 +54,18 @@ jobs:
         working-directory: frontend
         run: npx expo prebuild --platform android --no-install --non-interactive
 
-      - name: Ensure release uses debug signing
+      - name: Ensure release uses the committed (stable) debug keystore
         working-directory: frontend/android
         run: |
-          # Expo prebuild already wires release to signingConfigs.debug by default,
-          # but make sure debug.keystore exists at the expected location.
-          if [ ! -f app/debug.keystore ]; then
-            keytool -genkeypair -v \
-              -keystore app/debug.keystore \
-              -storepass android -alias androiddebugkey -keypass android \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
+          # Expo prebuild wires release → signingConfigs.debug by default. Copy the
+          # repo's COMMITTED debug keystore into place so every build is signed with
+          # the SAME key. That lets new APKs install over the top (adb install -r /
+          # tapping the new release) WITHOUT wiping app data — so saved API keys,
+          # chats and settings survive updates. (A debug keystore is not a secret;
+          # the password is the well-known "android".)
+          cp ../ci-debug.keystore app/debug.keystore
+          echo "Signing key fingerprint:"
+          keytool -list -v -keystore app/debug.keystore -storepass android -alias androiddebugkey | grep -E "SHA1|SHA256" || true
           echo "--- relevant snippet of app/build.gradle ---"
           grep -nE "signingConfig|buildTypes|release" app/build.gradle | head -40
 
