@@ -35,6 +35,14 @@ interface ChatMainAreaProps {
 
 const MAX_MENTION_CHAIN = 3;
 
+// Appended (invisibly to the user) to each agent's prompt in a multi-agent reply
+// so they talk WITH each other instead of echoing the same points.
+const SWARM_DIRECTIVE =
+  "(Group chat: the others are replying too — their messages are above. Don't repeat a point already made. React to it: agree, build on it, or push back, and name who you're answering. Stay in your own voice.)";
+
+// Order Red's build crew executes in: plan → analyze → build → expand → review.
+const BUILD_ORDER = ['red', 'blue', 'green', 'yellow', 'purple'];
+
 export default function ChatMainArea({
   project, agentId, savedChat, mode, continueContext, onDataChange, onContinueInDm,
 }: ChatMainAreaProps) {
@@ -99,6 +107,7 @@ export default function ChatMainArea({
     const resolvedText = cmd?.stripped ?? text;
     const forcedTargets = cmd?.targetAgentIds;
     const shouldPin = !!cmd?.pin;
+    const buildMode = !!cmd?.buildMode;
 
     const userMsg: SwarmMessage = {
       id: uuidv4(),
@@ -133,6 +142,10 @@ export default function ChatMainArea({
       const agent = allAgents.find(a => a.id === agentId);
       if (agent) await streamAgentMessage(agent, resolvedText);
     } else if (mode === 'project' && project) {
+      if (buildMode) {
+        await orchestrateBuild(resolvedText);
+        return;
+      }
       const targetIds = forcedTargets && forcedTargets.length
         ? forcedTargets
         : routeMessage(resolvedText, customAgents);
@@ -141,9 +154,12 @@ export default function ChatMainArea({
       const fallback = toRespond.length > 0
         ? toRespond
         : allAgents.filter(a => project.agents.includes(a.id)).slice(0, 2);
+      // When more than one agent answers, tell each to react to the others
+      // rather than echo them.
+      const directive = fallback.length > 1 ? SWARM_DIRECTIVE : undefined;
       for (let i = 0; i < fallback.length; i++) {
         await new Promise(r => setTimeout(r, i * 500));
-        await streamAgentMessage(fallback[i], resolvedText);
+        await streamAgentMessage(fallback[i], resolvedText, 0, directive);
       }
     }
   }
@@ -166,8 +182,11 @@ export default function ChatMainArea({
     agent: SwarmAgent,
     userMessage: string,
     chainDepth = 0,
+    directive?: string,
   ) {
     if (!scope) return;
+    // The directive is sent to the model but never shown to the user.
+    const apiUserMessage = directive ? `${userMessage}\n\n${directive}` : userMessage;
 
     const msgId = uuidv4();
     const agentMsg: SwarmMessage = {
@@ -187,19 +206,25 @@ export default function ChatMainArea({
     let finalUsage: MessageUsage | undefined;
 
     await streamAgentResponse(
-      agent, userMessage, context,
+      agent, apiUserMessage, context,
       (chunk) => {
         fullResponse += chunk;
-        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: fullResponse } : m));
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: fullResponse, contextNote: undefined } : m));
         scrollToBottom();
       },
       (usage) => { finalUsage = usage; },
       (error) => {
         fullResponse = fullResponse || `⚠ ${error}`;
-        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: fullResponse } : m));
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: fullResponse, contextNote: undefined } : m));
         setTypingAgents(prev => { const s = new Set(prev); s.delete(agent.id); return s; });
       },
-      { scopeKey: toScopeKey(scope) },
+      {
+        scopeKey: toScopeKey(scope),
+        // Live "◍ searching for a free model…" note while the round-robin cycles.
+        onStatus: (s) => {
+          setMessages(prev => prev.map(m => m.id === msgId ? { ...m, contextNote: s || undefined } : m));
+        },
+      },
     );
 
     const finalMsg: SwarmMessage = { ...agentMsg, text: fullResponse, usage: finalUsage };
@@ -242,6 +267,33 @@ export default function ChatMainArea({
           chainDepth + 1,
         );
       }
+    }
+  }
+
+  // ────────── Red-led build orchestration (/build) ──────────
+  // Red posts a plan and assigns each color a part, then the rest of the team
+  // executes their part in order — each sees Red's plan + the parts before it.
+  async function orchestrateBuild(task: string) {
+    if (!project || !scope) return;
+    const proj = project;
+    const team = BUILD_ORDER
+      .map(id => allAgents.find(a => a.id === id))
+      .filter((a): a is SwarmAgent => !!a && proj.agents.includes(a.id));
+    const red = team.find(a => a.id === 'red');
+    const rest = team.filter(a => a.id !== 'red');
+
+    if (red) {
+      await streamAgentMessage(
+        red,
+        `BUILD REQUEST: "${task}".\nYou're the lead. In 3–5 tight lines: state the approach, then assign each teammate one concrete part — write each as "Blue: …", "Green: …", "Yellow: …", "Purple: …". No fluff, just the call and the assignments.`,
+      );
+    }
+    for (const a of rest) {
+      await new Promise(r => setTimeout(r, 400));
+      await streamAgentMessage(
+        a,
+        `Red is leading a build of: "${task}". Read Red's plan and any parts already posted above, then do YOUR part as ${a.name} (${a.specialty}) — just your piece, concrete and runnable where it applies. Don't redo anyone else's part.`,
+      );
     }
   }
 

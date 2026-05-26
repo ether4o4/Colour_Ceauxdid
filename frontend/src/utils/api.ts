@@ -127,9 +127,11 @@ async function openrouterStream(
   onChunk: (s: string) => void,
   onDone: (usage?: MessageUsage) => void,
   onError: (e: string) => void,
+  signal?: AbortSignal,
 ) {
   try {
     const resp = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
+      signal,
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -227,10 +229,12 @@ async function ollamaStream(
   onChunk: (s: string) => void,
   onDone: (usage?: MessageUsage) => void,
   onError: (e: string) => void,
+  signal?: AbortSignal,
 ) {
   const url = baseUrl.replace(/\/+$/, '') + '/api/chat';
   try {
     const resp = await fetch(url, {
+      signal,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -302,7 +306,7 @@ export async function streamAgentResponse(
   onChunk: (chunk: string) => void,
   onDone: (usage?: MessageUsage) => void | ((_: MessageUsage | undefined) => void),
   onError: (err: string) => void,
-  context?: { scopeKey?: string },
+  context?: { scopeKey?: string; onStatus?: (s: string) => void },
 ): Promise<void> {
   const { provider, model, keyId } = await resolveAgentProviderAndModel(agent);
 
@@ -326,52 +330,63 @@ export async function streamAgentResponse(
     (onDone as any)(usage);
   };
 
-  // Build a single attempt for one specific provider/model/key
-  const attempt = async (p: 'openrouter' | 'ollama', m: string, kId?: string): Promise<{ ok: boolean; error?: string; was404?: boolean; was429?: boolean }> => {
+  // Build a single attempt for one specific provider/model/key. A short
+  // time-to-first-token timeout (via AbortController) keeps a dead/hung model
+  // from stalling the round-robin — once the first token lands, streaming is
+  // unbounded. `retry` means "another model might work, keep cycling".
+  const attempt = async (
+    p: 'openrouter' | 'ollama',
+    m: string,
+    kId?: string,
+  ): Promise<{ ok: boolean; error?: string; retry: boolean }> => {
     const k = await pickKeyForAgent(p, kId);
-    if (!k) return { ok: false, error: 'no-key' };
+    if (!k) return { ok: false, error: 'no-key', retry: false };
     const secret = await resolveApiKeySecret(k);
-    if (!secret) return { ok: false, error: 'no-secret' };
+    if (!secret) return { ok: false, error: 'no-secret', retry: false };
 
     const systemPrompt = await buildSystemPrompt(agent);
     const apiMessages = buildApiMessages(chatHistory, userMessage);
     const temperature = agent.id === 'yellow' ? 0.9 : agent.id === 'red' ? 0.3 : 0.7;
 
+    const controller = new AbortController();
+    let firstChunk = false;
+    const ttfbTimer = setTimeout(() => { if (!firstChunk) controller.abort(); }, 5000);
+
     let chunks = 0;
     let caughtErr: string | undefined;
     let caughtUsage: MessageUsage | undefined;
-    const wrapChunk = (c: string) => { chunks++; onChunk(c); };
+    const wrapChunk = (c: string) => {
+      if (!firstChunk) { firstChunk = true; clearTimeout(ttfbTimer); }
+      chunks++;
+      onChunk(c);
+    };
 
     await new Promise<void>((resolve) => {
       const onDoneInner = (u?: MessageUsage) => { caughtUsage = u; resolve(); };
-      const onErrInner = (e: string) => { caughtErr = e; resolve(); };
+      const onErrInner = (_e: string) => { caughtErr = _e; resolve(); };
       if (p === 'openrouter') {
-        openrouterStream(secret, m, systemPrompt, apiMessages, temperature, wrapChunk, onDoneInner, onErrInner);
+        openrouterStream(secret, m, systemPrompt, apiMessages, temperature, wrapChunk, onDoneInner, onErrInner, controller.signal);
       } else {
-        ollamaStream(secret, m, systemPrompt, apiMessages, temperature, wrapChunk, onDoneInner, onErrInner);
+        ollamaStream(secret, m, systemPrompt, apiMessages, temperature, wrapChunk, onDoneInner, onErrInner, controller.signal);
       }
     });
+    clearTimeout(ttfbTimer);
 
     if (caughtErr) {
-      const is404 = /\b404\b|no endpoints found/i.test(caughtErr);
-      const is429 = /\b429\b|rate.?limit|rate-limited/i.test(caughtErr);
-      return { ok: false, error: caughtErr, was404: is404, was429: is429 };
+      // Auth/credit problems are fatal — trying another model won't help.
+      const fatal = /\b401\b|\b403\b|\b402\b|invalid|unauthor|forbidden|credit|no key|api key/i.test(caughtErr);
+      return { ok: false, error: caughtErr, retry: !fatal };
     }
-    if (chunks === 0) return { ok: false, error: 'empty response' };
+    if (chunks === 0) return { ok: false, error: 'empty response', retry: true };
     await wrappedDone(caughtUsage);
-    return { ok: true };
+    return { ok: true, retry: false };
   };
 
   // ── Primary attempt ──
   const primary = await attempt(provider, model, keyId);
   if (primary.ok) return;
 
-  // ── Fallback strategy ──
-  // 1. If model 404'd or got 429'd on OpenRouter, walk a list of currently
-  //    active free models. Free models share an upstream pool; 429s on one
-  //    don't mean 429s on another.
-  // 2. If Ollama failed (unreachable / bad model), fall back to OpenRouter.
-  // 3. If no-key, surface the friendly error immediately.
+  // Missing-key problems are surfaced immediately — cycling won't fix them.
   if (primary.error === 'no-key') {
     onError(
       provider === 'openrouter'
@@ -385,17 +400,20 @@ export async function streamAgentResponse(
     return;
   }
 
-  // Retry: model 404'd (deprecated) or 429'd (shared free pool saturated).
-  // Free models on OpenRouter churn constantly, so a hardcoded list rots. Fetch
-  // the LIVE free-model catalog and walk it, smallest/most-reliable families
-  // first. Backstop with a short hardcoded list only if the fetch fails.
-  if (provider === 'openrouter' && (primary.was404 || primary.was429)) {
+  // ── Round-robin fallback (OpenRouter) ──
+  // Free models share one upstream pool; a 429/empty/timeout on one doesn't mean
+  // the next is down. Walk the LIVE free-model catalog (most-reliable families
+  // first), two passes with a short backoff, surfacing a "searching" status the
+  // whole time. Only error out once every model has genuinely failed.
+  if (provider === 'openrouter' && primary.retry) {
+    context?.onStatus?.('◍ searching for a free model…');
+
     let chain: string[] = [];
     try {
       const orKeys = await keysForProvider('openrouter');
       const secret = orKeys.length ? await resolveApiKeySecret(orKeys[0]) : undefined;
       const live = (await listOpenRouterModels(secret))
-        .map(m => m.id)
+        .map(mm => mm.id)
         .filter(id => id.endsWith(':free'));
       const rank = (id: string) => {
         const s = id.toLowerCase();
@@ -409,21 +427,29 @@ export async function streamAgentResponse(
     } catch {}
     if (chain.length === 0) {
       chain = [
-        'meta-llama/llama-3.3-70b-instruct:free',
+        'meta-llama/llama-3.2-3b-instruct:free',
         'qwen/qwen-2.5-7b-instruct:free',
+        'meta-llama/llama-3.3-70b-instruct:free',
       ];
     }
-    let tried = 0;
-    for (const fallbackModel of chain) {
-      if (fallbackModel === model) continue;
-      const retry = await attempt('openrouter', fallbackModel, keyId);
-      if (retry.ok) return;
-      // Keep walking only on 404/429; any other error (bad key, network) stops.
-      if (!retry.was404 && !retry.was429) break;
-      if (++tried >= 6) break; // cap attempts to keep latency sane
+    chain = chain.filter(m => m !== model);
+
+    const MAX_ATTEMPTS = 8;
+    let attempts = 0;
+    for (let pass = 0; pass < 2; pass++) {
+      for (const fallbackModel of chain) {
+        if (attempts >= MAX_ATTEMPTS) break;
+        attempts++;
+        const r = await attempt('openrouter', fallbackModel, keyId);
+        if (r.ok) { context?.onStatus?.(''); return; }
+        if (!r.retry) { context?.onStatus?.(''); onError(r.error || 'Request failed'); return; }
+      }
+      if (attempts >= MAX_ATTEMPTS) break;
+      await new Promise(r => setTimeout(r, 700)); // let a transient pool-wide 429 clear
     }
-    // Every free model we tried was unavailable.
-    onError('All free models are busy or unavailable right now. Switch the model in Settings → Default Model, or add a little OpenRouter credit and pick a paid model (far more reliable than the free pool).');
+
+    context?.onStatus?.('');
+    onError('All free models are busy right now — I tried the whole free pool twice. Add a little OpenRouter credit and pick a paid model in Settings → Default Model for reliable replies.');
     return;
   }
 

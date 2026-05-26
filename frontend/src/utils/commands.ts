@@ -17,13 +17,13 @@ export interface ParsedCommand {
   stripped: string;        // message with the command prefix removed
   targetAgentIds: string[];
   pin?: boolean;           // if true, also add a pinned memory from this message
+  buildMode?: boolean;     // /build → Red leads, assigns parts, team executes in order
 }
 
 const MAP: Record<string, string> = {
   plan: 'red',
   decide: 'red',
   code: 'green',
-  build: 'green',
   execute: 'green',
   brainstorm: 'yellow',
   idea: 'yellow',
@@ -45,6 +45,14 @@ export function parseSlashCommand(text: string): ParsedCommand | null {
 
   if (head === 'swarm') {
     return { stripped: tail || 'Open discussion.', targetAgentIds: ['red', 'blue', 'green', 'yellow', 'purple'] };
+  }
+  if (head === 'build') {
+    // Red-led build: Red plans + assigns, then the team executes their parts in order.
+    return {
+      stripped: tail || 'Build something useful.',
+      targetAgentIds: ['red', 'blue', 'green', 'yellow', 'purple'],
+      buildMode: true,
+    };
   }
   if (head === 'ask') {
     const m = tail.match(/^(\w+)\s*(.*)$/);
@@ -68,6 +76,7 @@ export function parseSlashCommand(text: string): ParsedCommand | null {
 
 export const SLASH_COMMANDS_HELP = [
   { cmd: '/plan', desc: 'Red plans it', color: '#ff3b3b' },
+  { cmd: '/build', desc: 'Red leads — assigns & the team builds it', color: '#ff3b3b' },
   { cmd: '/code', desc: 'Green builds it', color: '#2dff7a' },
   { cmd: '/brainstorm', desc: 'Yellow expands', color: '#ffe53b' },
   { cmd: '/factcheck', desc: 'Blue analyzes', color: '#3b8fff' },
