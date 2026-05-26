@@ -8,7 +8,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web --port 3000",
-    "build": "expo export --platform web"
+    "build": "expo export --platform web",
+    "tts:test": "node local-tool-bridge/test-elevenlabs-tts.mjs",
+    "tts:python": "python scripts/elevenlabs_tts.py"
   },
   "dependencies": {
     "@expo-google-fonts/dm-sans": "^0.4.2",

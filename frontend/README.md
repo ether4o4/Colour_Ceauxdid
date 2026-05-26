@@ -45,6 +45,27 @@ npm install
 npx expo start
 ```
 
+## Termux ElevenLabs TTS
+
+The app has built-in ElevenLabs voice playback through Settings -> Voice. For
+Termux/local testing, use the bridge scripts:
+
+```bash
+cp .env.example .env
+# fill ELEVENLABS_API_KEY
+npm run tts:test -- "Colour Ceauxdid online"
+```
+
+For the Python SDK path:
+
+```bash
+python -m pip install elevenlabs
+npm run tts:python -- "Colour Ceauxdid online"
+```
+
+The reusable Node function lives in `local-tool-bridge/elevenlabs-tts.mjs`; the
+Python function lives in `scripts/elevenlabs_tts.py`.
+
 ## Build APK
 
 ```bash
